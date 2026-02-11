@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Sales</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <style>
+        /* --- FILTER SECTION STYLES --- */
+        .filter-box {
+            background-color: #e3f2fd;
+            border: 1px solid #90caf9;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 4px;
+        }
+        .filter-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr); /* 4 columns like screenshot */
+            gap: 10px 20px;
+            align-items: center;
+        }
+        .filter-group {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+        }
+        .filter-group label {
+            white-space: nowrap;
+            margin-right: 10px;
+            font-size: 12px;
+            color: #444;
+            font-weight: 600;
+        }
+        .filter-group input, .filter-group select {
+            width: 100%;
+            padding: 5px;
+            border: 1px solid #ccc;
+            font-size: 12px;
+            border-radius: 2px;
+        }
+        .btn-search {
+            background: #0288d1;
+            color: white;
+            border: none;
+            padding: 6px 20px;
+            font-size: 13px;
+            cursor: pointer;
+            border-radius: 3px;
+        }
+        .btn-clear {
+            background: #0288d1; /* Same blue as screenshot */
+            color: white;
+            border: none;
+            padding: 6px 20px;
+            font-size: 13px;
+            cursor: pointer;
+            border-radius: 3px;
+            margin-left: 5px;
+        }
+
+        /* --- TABLE STYLES --- */
+        .complex-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+            background: white;
+        }
+        .complex-table thead th {
+            background: #444;
+            color: white;
+            padding: 8px;
+            text-align: left;
+            border: 1px solid #555;
+            white-space: nowrap;
+        }
+        .complex-table tbody td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            vertical-align: top;
+            color: #333;
+        }
+        .complex-table tbody tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+        
+        /* Specific Column Formatting */
+        .col-details-money {
+            font-size: 11px;
+            line-height: 1.6;
+            color: #555;
+        }
+        .money-row {
+            display: flex;
+            justify-content: space-between;
+        }
+        
+        /* --- ACTION ICONS GRID --- */
+        .action-grid {
+            display: grid;
+            grid-template-columns: repeat(4, auto); /* 4 icons per row */
+            gap: 5px;
+            justify-content: start;
+        }
+        .act-btn {
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 12px;
+            color: white;
+            transition: 0.2s;
+            text-decoration: none;
+        }
+        .act-btn:hover { opacity: 0.8; transform: scale(1.1); }
+
+        /* Icon Colors */
+        .ic-whatsapp { background: #25D366; }
+        .ic-edit { background: #9c27b0; }
+        .ic-print { background: #555; }
+        .ic-check { background: #4caf50; }
+        .ic-delete { background: #f44336; }
+        .ic-eye { background: #000; }
+        .ic-rupee { background: #ff9800; }
+        .ic-blue { background: #0288d1; }
+
+        .sales-tabs {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 12px;
+            flex-wrap: wrap;
+        }
+        .sales-tab {
+            background: #e0e0e0;
+            border: 1px solid #cfcfcf;
+            color: #222;
+            padding: 6px 12px;
+            font-size: 12px;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        .sales-tab.active {
+            background: #0288d1;
+            border-color: #0288d1;
+            color: #fff;
+        }
+        .hidden { display: none !important; }
+
+        /* Rx Edit Modal (Pending Orders) */
+        .popup-modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 2000; justify-content: center; align-items: center; }
+        .popup-content { background: white; width: 900px; border-radius: 4px; box-shadow: 0 5px 20px rgba(0,0,0,0.3); border: 1px solid #2196f3; overflow: hidden; }
+        .popup-header { background: #2196f3; color: white; padding: 10px 15px; font-weight: bold; display: flex; justify-content: space-between; }
+        .popup-body { padding: 20px; max-height: 80vh; overflow-y: auto; background:#f8f9fa; }
+        .popup-form-grid { display: grid; grid-template-columns: 100px 1fr 100px 1fr; gap: 15px; align-items: center; margin-bottom: 15px; }
+        .popup-form-grid label { text-align: right; font-size: 12px; font-weight: bold; color: #444; }
+        .popup-form-grid input, .popup-form-grid select { width: 100%; padding: 6px; border: 1px solid #ccc; border-radius: 3px; font-size: 12px; box-sizing: border-box; }
+        .rx-cell-input { width: 100%; border: none; padding: 8px; text-align: center; outline: none; font-size: 13px; }
+        .rx-cell-input:focus { background: #e8f5e9; font-weight: bold; }
+        .rx-data-table { width: 100%; border-collapse: collapse; text-align: center; font-size: 12px; background: white; }
+        .rx-data-table th, .rx-data-table td { border: 1px solid #000; padding: 6px; }
+        .rx-header-row { background: #eee; font-weight: bold; }
+        .rx-eye-title { background: #ddd; font-weight: bold; }
+        .rx-vision-label { background: #f9f9f9; font-weight: bold; }
+        .rx-add-cell { text-align: left; padding-left: 10px; font-weight: bold; background: #fafafa; }
+    </style>
+</head>
+<body>
+    <div class="top-bar">
+        <div class="nav-icons">
+            <div class="nav-icon bg-black" style="width:60px"><i class="fas fa-glasses"></i></div>
+            <a href="home.html"><div class="nav-icon bg-green"><i class="fas fa-home"></i></div></a>
+            <a href="dashboard.html"><div class="nav-icon bg-orange"><i class="fas fa-tachometer-alt"></i></div></a>
+            <div class="nav-icon bg-blue"><i class="fas fa-search"></i></div>
+            <div class="nav-icon bg-yellow"><i class="fas fa-th"></i></div>
+            <div class="nav-icon bg-purple"><i class="fas fa-cog"></i></div>
+            <div class="nav-icon bg-red"><i class="fas fa-user"></i></div>
+        </div>
+        <div class="user-info">
+    <strong>Welcome, Admin</strong><br>
+    <span id="liveClock">Online</span>
+    <div style="margin-top:5px;">
+        <a href="#" onclick="performLogout()" style="color:#ff9800; font-weight:bold; text-decoration:none; font-size:11px;">
+            <i class="fas fa-sign-out-alt"></i> Logout
+        </a>
+    </div>
+</div>
+    </div>
+    
+    <div class="main-menu">
+        <div class="menu-item">
+            <i class="fas fa-box"></i> PRODUCTS <i class="fas fa-caret-down" style="font-size:10px; margin-left:3px;"></i>
+            <div class="dropdown-content">
+                <a href="products.html">Add New Product</a>
+                <a href="products.html">Product List</a>
+                <a href="products.html">Frame</a>
+                <a href="products.html">Sunglasses</a>
+                <a href="products.html">Lens</a>
+                <a href="products.html">Contact Lens</a>
+                <a href="products.html">Solution</a>
+                <a href="products.html">Other</a>
+                <a href="products.html">Non-Chargeable</a>
+            </div>
+        </div>
+        
+        <div class="menu-item">
+            <i class="fas fa-clipboard-list"></i> INVENTORY <i class="fas fa-caret-down" style="font-size:10px; margin-left:3px;"></i>
+            <div class="dropdown-content">
+                <a href="inventory.html">Inventory Levels</a>
+                <a href="inventory.html">Transfer Stock</a>
+                <a href="inventory.html">Transfer Using Barcode</a>
+                <a href="inventory.html">Transfer History</a>
+                <a href="inventory.html">Inventory Audit</a>
+                <a href="inventory.html">Stock Movement</a>
+                <a href="barcode.html">Track Barcode</a>
+            </div>
+        </div>
+
+        <div class="menu-item">
+            <i class="fas fa-tag"></i> PURCHASE <i class="fas fa-caret-down" style="font-size:10px; margin-left:3px;"></i>
+            <div class="dropdown-content">
+                <a href="purchase.html">Add Purchase</a>
+                <a href="purchase.html">Purchase History</a>
+                <a href="purchase.html">Edit Purchase</a>
+                <a href="purchase.html">Purchase Return</a>
+                <a href="purchase.html">Pending Challans</a>
+                <a href="purchase.html">Pending Purchases</a>
+                <a href="barcode.html">Generate Barcode</a>
+                <a href="barcode.html">Confirm Barcode</a>
+            </div>
+        </div>
+        
+        <div class="menu-item">
+            <i class="fas fa-shopping-cart"></i> SALES <i class="fas fa-caret-down" style="font-size:10px; margin-left:3px;"></i>
+            <div class="dropdown-content">
+                <a href="order.html">Create New Order</a>
+                <a href="sales_history.html?view=pending" style="color:#03a9f4;">Pending Orders</a>
+                <a href="sales_history.html?view=history">Sales History</a>
+                <a href="sales_history.html?view=return">Sales Return</a>
+                <a href="sales_history.html?view=statement">Daily Statement PDF</a>
+                <a href="invoice.html">Create Bulk Invoice</a>
+            </div>
+        </div>
+
+        <div class="menu-item">
+            <i class="fas fa-users"></i> CUSTOMER <i class="fas fa-caret-down" style="font-size:10px; margin-left:3px;"></i>
+             <div class="dropdown-content">
+                <a href="customer.html">Add Customer</a>
+                <a href="customer.html">Customer List</a>
+                <a href="customer.html">DND Customers</a>
+                <a href="customer.html">Customer Label</a>
+                <a href="customer.html">Birthday List</a>
+            </div>
+        </div>
+
+        <a href="reports.html" class="menu-item"><i class="fas fa-chart-bar"></i> REPORTS</a>
+
+        <div class="menu-item">
+            <i class="fas fa-sms"></i> SMS <i class="fas fa-caret-down" style="font-size:10px; margin-left:3px;"></i>
+             <div class="dropdown-content">
+                <a href="sms.html">Send Bulk SMS</a>
+                <a href="sms.html">SMS Account History</a>
+                <a href="sms.html">SMS Purchase History</a>
+                <a href="sms.html">Feedback SMS/WhatsApp</a>
+                <a href="sms.html">Sender ID's</a>
+            </div>
+        </div>
+
+        <div class="menu-item">
+            <i class="fas fa-file-medical"></i> PRESCRIPTION <i class="fas fa-caret-down" style="font-size:10px; margin-left:3px;"></i>
+            <div class="dropdown-content">
+                <a href="prescription.html">Add Prescription</a>
+                <a href="prescription.html">Prescription Database</a>
+                <a href="prescription.html">Patient Details</a>
+                <a href="prescription.html">Appointments</a>
+            </div>
+        </div>
+
+        <div class="menu-item">
+            <i class="fas fa-lock"></i> ACCOUNT <i class="fas fa-caret-down" style="font-size:10px; margin-left:3px;"></i>
+            <div class="dropdown-content" style="min-width:240px; right:0; left:auto;">
+                <a href="expense.html">Expenses</a>
+                <a href="accounts.html">Ledgers</a>
+                <a href="accounts.html">Group Ledgers</a>
+                <a href="accounts.html">Vouchers</a>
+                <a href="accounts.html">Account Payable</a>
+                <a href="accounts.html">Account Receivable</a>
+                <a href="accounts.html">Account Statement</a>
+                <a href="accounts.html">Trading, P/L Statement</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="billing-container">
+        <h2 id="salesPageTitle" style="margin-top:0;">Pending Orders</h2>
+
+        <div class="sales-tabs">
+            <button class="sales-tab active" data-view="pending" onclick="setSalesView('pending')">Pending Orders</button>
+            <button class="sales-tab" data-view="history" onclick="setSalesView('history')">Sales History</button>
+            <button class="sales-tab" data-view="return" onclick="setSalesView('return')">Sales Return</button>
+            <button class="sales-tab" data-view="statement" onclick="setSalesView('statement')">Daily Statement PDF</button>
+        </div>
+
+        <div class="filter-box">
+            <div class="filter-grid">
+                <div class="filter-group"><label>Order No :</label><input type="text" id="sOrderNo"></div>
+                <div class="filter-group"><label>Customer Name :</label><input type="text" id="sCustName"></div>
+                <div class="filter-group"><label>Mobile Number :</label><input type="text" id="sMobile"></div>
+                <div class="filter-group"><label>Sales Person :</label><input type="text" id="sSales"></div>
+                
+                <div class="filter-group"><label>Order Date :</label>
+                    <div style="display:flex; gap:5px; width:100%">
+                        <input type="date" id="sDateFrom"><input type="date" id="sDateTo">
+                    </div>
+                </div>
+                
+                <div class="filter-group"><label>Delivery Date :</label>
+                    <div style="display:flex; gap:5px; width:100%">
+                        <input type="date" id="sDelFrom"><input type="date" id="sDelTo">
+                    </div>
+                </div>
+            </div>
+            <div style="text-align:center; margin-top:15px;">
+                <button class="btn-search" onclick="runSalesSearch()">Search <i class="fas fa-arrow-right"></i></button>
+                <button class="btn-clear" onclick="clearFilters()">Clear <i class="fas fa-times"></i></button>
+            </div>
+        </div>
+
+        <div id="pendingWrapper" class="product-table-container">
+            <div style="text-align:right; margin-bottom:5px;">
+                <button class="btn-search" style="font-size:11px;">SEND ORDER FORMS THROUGH WHATSAPP <i class="fas fa-arrow-right"></i></button>
+            </div>
+            
+            <table class="complex-table">
+                <thead>
+                    <tr>
+                        <th style="width:30px">#</th>
+                        <th>Order Date</th>
+                        <th>Delivery Date</th>
+                        <th>Order No</th>
+                        <th>Customer Details</th>
+                        <th>Mobile Number</th>
+                        <th style="width:200px">Details (Rs)</th>
+                        <th>Branch</th>
+                        <th>User</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody id="pendingTableBody">
+                    </tbody>
+            </table>
+        </div>
+
+        <div id="historyWrapper" class="product-table-container hidden">
+            <table class="complex-table">
+                <thead>
+                    <tr>
+                        <th style="width:30px">#</th>
+                        <th>Order Date</th>
+                        <th>Delivery Date</th>
+                        <th>Order No</th>
+                        <th>Customer Details</th>
+                        <th>Mobile Number</th>
+                        <th style="width:200px">Details (Rs)</th>
+                        <th>Branch</th>
+                        <th>User</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody id="historyTableBody">
+                    </tbody>
+            </table>
+        </div>
+
+        <div id="statementWrapper" class="product-table-container hidden">
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:10px;">
+                <div style="font-size:12px; color:#555;">
+                    Use the Order Date filters above for the date range.
+                </div>
+                <div style="display:flex; gap:8px;">
+                    <button class="btn-search" onclick="buildDailyStatement()">Preview</button>
+                    <button class="btn-search" onclick="downloadDailyStatementPDF()">Download PDF</button>
+                </div>
+            </div>
+            <div id="statementContent" style="background:#fff; border:1px solid #ddd; padding:12px;">
+                <div style="font-size:12px; color:#777;">Select a date range and click Preview.</div>
+            </div>
+        </div>
+
+        <div id="salesPlaceholder" class="hidden" style="background:#fff3e0; border:1px solid #ffcc80; padding:12px; border-radius:4px; font-size:12px;">
+            This view is not available yet. Please use Pending Orders, Sales History, or Daily Statement PDF.
+        </div>
+    </div>
+
+    <div id="modalLens" class="popup-modal">
+        <div class="popup-content" style="font-family:'Segoe UI', sans-serif;">
+            <div class="popup-header">
+                <span>EDIT PRESCRIPTION</span>
+                <span onclick="closeModal('modalLens')" style="cursor:pointer; font-size:18px;">×</span>
+            </div>
+
+            <div class="popup-body">
+                <div class="popup-form-grid" style="grid-template-columns: 160px 1fr; gap:10px; margin-bottom:10px; display:grid;" id="rxSelectWrap">
+                    <label>Select Prescription:</label>
+                    <select id="rxItemSelect" onchange="handleRxSelectChange(this)"></select>
+                </div>
+
+                <div class="popup-form-grid" style="grid-template-columns: 120px 1fr 120px 1fr; gap:15px; margin-bottom:15px;">
+                    <label>Customer:</label>
+                    <input id="lnCustName" placeholder="Customer Name">
+                    <label>Mobile:</label>
+                    <input id="lnCustPhone" placeholder="Mobile No">
+                </div>
+
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:20px; margin-bottom:20px;">
+                    <div class="popup-form-grid" style="grid-template-columns: 100px 1fr; gap:10px;">
+                        <label>Product Code:</label>
+                        <input id="lnCode" placeholder="Code">
+                        <label>Type:</label>
+                        <select id="lnType" style="padding:5px;">
+                            <option>Single Vision</option><option>Bifocal</option><option>Progressive</option><option>Trifocal</option>
+                        </select>
+                        <label>Index:</label> <input id="lnIndex" placeholder="e.g. 1.56">
+                    </div>
+                    <div class="popup-form-grid" style="grid-template-columns: 100px 1fr; gap:10px;">
+                        <label>Brand:</label> <input id="lnBrand" placeholder="Brand">
+                        <label>Coating:</label> <input id="lnCoating" placeholder="HMC, Blue Cut">
+                        <label>Design:</label> <input id="lnDesign">
+                    </div>
+                </div>
+
+                <h4 style="margin:0 0 10px 0; border-bottom:2px solid #ddd; padding-bottom:5px; color:#333;">Prescription</h4>
+
+                <table class="rx-data-table" style="border:2px solid #000; margin-top:5px;">
+                    <thead>
+                        <tr class="rx-eye-title">
+                            <th colspan="6" style="border-right:2px solid #000;">RIGHT EYE (OD)</th>
+                            <th colspan="6">LEFT EYE (OS)</th>
+                        </tr>
+                        <tr class="rx-header-row">
+                            <th>Vision</th><th>SPH</th><th>CYL</th><th>AXIS</th><th>PD</th><th>VA</th>
+                            <th style="border-left:2px solid #000;">Vision</th><th>SPH</th><th>CYL</th><th>AXIS</th><th>PD</th><th>VA</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td class="rx-vision-label">Distance</td>
+                            <td><input id="rx_r_sph" class="rx-cell-input"></td>
+                            <td><input id="rx_r_cyl" class="rx-cell-input"></td>
+                            <td><input id="rx_r_axis" class="rx-cell-input"></td>
+                            <td><input id="rx_r_pd" class="rx-cell-input"></td>
+                            <td><input id="rx_r_va" class="rx-cell-input"></td>
+
+                            <td class="rx-vision-label" style="border-left:2px solid #000;">Distance</td>
+                            <td><input id="rx_l_sph" class="rx-cell-input"></td>
+                            <td><input id="rx_l_cyl" class="rx-cell-input"></td>
+                            <td><input id="rx_l_axis" class="rx-cell-input"></td>
+                            <td><input id="rx_l_pd" class="rx-cell-input"></td>
+                            <td><input id="rx_l_va" class="rx-cell-input"></td>
+                        </tr>
+                        <tr>
+                            <td class="rx-vision-label">Near</td>
+                            <td><input id="rx_r_nv_sph" class="rx-cell-input"></td>
+                            <td><input id="rx_r_nv_cyl" class="rx-cell-input"></td>
+                            <td><input id="rx_r_nv_axis" class="rx-cell-input"></td>
+                            <td><input id="rx_r_nv_pd" class="rx-cell-input"></td>
+                            <td><input id="rx_r_nv_va" class="rx-cell-input"></td>
+
+                            <td class="rx-vision-label" style="border-left:2px solid #000;">Near</td>
+                            <td><input id="rx_l_nv_sph" class="rx-cell-input"></td>
+                            <td><input id="rx_l_nv_cyl" class="rx-cell-input"></td>
+                            <td><input id="rx_l_nv_axis" class="rx-cell-input"></td>
+                            <td><input id="rx_l_nv_pd" class="rx-cell-input"></td>
+                            <td><input id="rx_l_nv_va" class="rx-cell-input"></td>
+                        </tr>
+                        <tr>
+                            <td colspan="6" class="rx-add-cell" style="border-right:2px solid #000;"><strong>ADD:</strong>
+                                <input id="rx_r_add" style="width:120px; border:none; background:#f9f9f9; padding:4px;">
+                            </td>
+                            <td colspan="6" class="rx-add-cell"><strong>ADD:</strong>
+                                <input id="rx_l_add" style="width:120px; border:none; background:#f9f9f9; padding:4px;">
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <div style="margin-top:10px; display:flex; gap:15px; font-size:12px; color:#333;">
+                    <label><input type="checkbox" id="use_constant"> Constant Use</label>
+                    <label><input type="checkbox" id="use_distance"> Distance Wear</label>
+                    <label><input type="checkbox" id="use_reading"> Reading Wear</label>
+                    <label><input type="checkbox" id="use_computer"> Computer/Office</label>
+                </div>
+
+                <div style="background:#e3f2fd; padding:15px; margin-top:15px; border-radius:4px; border:1px solid #90caf9;">
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <div style="display:flex; gap:20px; align-items:center;">
+                            <label style="font-weight:bold; font-size:13px;">Lens Price (Rs):</label>
+                            <input type="number" id="lnPrice" style="padding:6px; font-weight:bold; color:blue; width:120px; border:1px solid #ccc;">
+
+                            <label style="font-weight:bold; font-size:13px;">Discount (%):</label>
+                            <input type="number" id="lnDisc" placeholder="0" style="padding:6px; color:red; width:80px; border:1px solid #ccc;">
+                        </div>
+                        <button onclick="saveRxEditFromModal()" class="btn-search" style="padding:8px 25px; font-size:14px;">Save Rx</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+    <script>
+        document.addEventListener("DOMContentLoaded", initSalesHistoryPage);
+    </script>
+</body>
+</html>
+
+

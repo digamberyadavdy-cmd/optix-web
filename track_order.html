@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Track Order - OptixCrafter</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        body { background-color: #f0f2f5; display: flex; align-items: center; justify-content: center; min-height: 100vh; font-family: 'Segoe UI', sans-serif; }
+        
+        .track-card {
+            background: white;
+            padding: 40px;
+            border-radius: 10px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            width: 100%;
+            max-width: 450px;
+            text-align: center;
+        }
+
+        .track-header i { font-size: 40px; color: #2563eb; margin-bottom: 15px; }
+        .track-header h2 { margin: 0 0 10px 0; color: #333; }
+        .track-header p { color: #666; font-size: 13px; margin-bottom: 25px; line-height: 1.5; }
+
+        .form-group { text-align: left; margin-bottom: 15px; }
+        .form-group label { display: block; font-weight: 600; font-size: 12px; margin-bottom: 5px; color: #555; }
+        .form-group input { 
+            width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; box-sizing: border-box; transition: 0.3s;
+        }
+        .form-group input:focus { border-color: #2563eb; outline: none; box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1); }
+
+        .btn-track {
+            background: #2563eb; color: white; border: none; padding: 12px; width: 100%; border-radius: 6px; 
+            font-size: 15px; font-weight: bold; cursor: pointer; transition: background 0.2s; margin-top: 10px;
+        }
+        .btn-track:hover { background: #1d4ed8; }
+
+        /* RESULT SECTION */
+        .result-box { margin-top: 25px; display: none; text-align: left; border-top: 1px dashed #ccc; padding-top: 20px; animation: slideDown 0.3s ease-out; }
+        
+        .status-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+        .status-badge { padding: 5px 10px; border-radius: 20px; font-size: 12px; font-weight: bold; color: white; }
+        .bg-pending { background: #f59e0b; }
+        .bg-confirmed { background: #10b981; }
+
+        .detail-row { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 8px; color: #444; }
+        .total-row { display: flex; justify-content: space-between; font-weight: bold; font-size: 15px; margin-top: 15px; border-top: 1px solid #eee; padding-top: 10px; }
+
+        .btn-download {
+            display: flex; align-items: center; justify-content: center; gap: 8px;
+            background: #333; color: white; text-decoration: none; padding: 10px; 
+            border-radius: 6px; margin-top: 20px; font-size: 13px; transition: 0.2s;
+        }
+        .btn-download:hover { background: #000; }
+        .btn-pending { background: #f59e0b; }
+        .btn-pending:hover { background: #d97706; }
+
+        .error-msg { 
+            color: #d32f2f; background: #ffebee; padding: 10px; border-radius: 4px; 
+            font-size: 13px; margin-top: 15px; display: none; border: 1px solid #ffcdd2;
+        }
+
+        @keyframes slideDown { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
+</head>
+<body>
+
+    <div class="track-card">
+        <div class="track-header">
+            <i class="fas fa-shield-alt"></i>
+            <h2>Secure Order Tracking</h2>
+            <p>For security purposes, please enter both your <strong>Order ID</strong> and <strong>Registered Mobile Number</strong> to view details.</p>
+        </div>
+
+        <div class="form-group">
+            <label>Order ID (found on receipt/SMS)</label>
+            <input type="text" id="inpOrderId" placeholder="e.g. 1739185522432">
+        </div>
+
+        <div class="form-group">
+            <label>Registered Mobile Number</label>
+            <input type="text" id="inpPhone" placeholder="e.g. 9876543210">
+        </div>
+
+        <button class="btn-track" onclick="verifyAndTrack()">View Order Details</button>
+        
+        <div id="errorMsg" class="error-msg">
+            <i class="fas fa-times-circle"></i> No match found. Please check both Order ID and Mobile Number.
+        </div>
+
+        <div id="resultBox" class="result-box">
+            <div class="status-row">
+                <strong style="font-size:16px;">Order Details</strong>
+                <span id="resStatus" class="status-badge bg-pending">Pending</span>
+            </div>
+
+            <div class="detail-row"><span>Customer:</span> <strong id="resName">-</strong></div>
+            <div class="detail-row"><span>Order Date:</span> <span id="resDate">-</span></div>
+            <div class="detail-row"><span>Items Count:</span> <span id="resItems">-</span></div>
+
+            <div class="total-row">
+                <span>Total Amount:</span>
+                <span id="resAmount">Rs 0.00</span>
+            </div>
+            <div class="detail-row" style="margin-top:5px; color:#d32f2f;">
+                <span>Balance Due:</span>
+                <span id="resBalance" style="font-weight:bold">Rs 0.00</span>
+            </div>
+
+            <a href="#" id="btnInvoice" target="_blank" class="btn-download">
+                <i class="fas fa-file-pdf"></i> Download Invoice
+            </a>
+            <a href="#" id="btnPending" target="_blank" class="btn-download btn-pending" style="display:none;">
+                <i class="fas fa-wallet"></i> Pay Pending Balance
+            </a>
+        </div>
+    </div>
+
+    <script>
+        function verifyAndTrack() {
+            // 1. Get Inputs
+            const rawOrderId = document.getElementById('inpOrderId').value.trim();
+            const rawPhone = document.getElementById('inpPhone').value.trim();
+            const errorEl = document.getElementById('errorMsg');
+            const resultEl = document.getElementById('resultBox');
+
+            // 2. Basic Validation
+            if (!rawOrderId || !rawPhone) {
+                alert("Please fill in both fields.");
+                return;
+            }
+
+            // 3. Fetch Data from LocalStorage
+            const orders = JSON.parse(localStorage.getItem('optixOrders')) || [];
+
+            // 4. SECURE SEARCH: Check if BOTH ID and Phone match a single record
+            const normalizeId = (val) => (val ?? "").toString().replace(/\D/g, "");
+            const normalizePhone = (val) => (val ?? "").toString().replace(/\D/g, "").slice(-10);
+
+            const orderIdInput = normalizeId(rawOrderId);
+            const phoneInput = normalizePhone(rawPhone);
+
+            if (!orderIdInput || !phoneInput) {
+                alert("Please enter a valid Order ID and Mobile Number.");
+                return;
+            }
+
+            const order = orders.find(o =>
+                normalizeId(o.id) === orderIdInput &&
+                normalizePhone(o.phone) === phoneInput
+            );
+
+            // 5. Handle Result
+            if (order) {
+                // Success: Show Data
+                errorEl.style.display = 'none';
+                
+                document.getElementById('resName').textContent = order.name;
+                document.getElementById('resDate').textContent = new Date(order.date).toLocaleDateString();
+                document.getElementById('resItems').textContent = order.items ? order.items.length : 0;
+                
+                // Financials
+                const amount = parseFloat(order.amount) || 0;
+                const paid = parseFloat(order.paid) || 0;
+                const balance = amount - paid;
+
+                document.getElementById('resAmount').textContent = "Rs " + amount.toFixed(2);
+                
+                const balEl = document.getElementById('resBalance');
+                balEl.textContent = "Rs " + balance.toFixed(2);
+                balEl.style.color = balance > 0 ? '#d32f2f' : '#10b981'; // Red if due, Green if paid
+
+                // Status
+                const statusEl = document.getElementById('resStatus');
+                statusEl.textContent = order.status || "Pending";
+                statusEl.className = `status-badge ${order.status === 'Confirmed' ? 'bg-confirmed' : 'bg-pending'}`;
+
+                // Set Invoice Link
+                const invLink = document.getElementById('btnInvoice');
+                invLink.href = `invoice.html?orderId=${order.id}`;
+
+                // Pending Payment Button (only if balance due)
+                const pendingBtn = document.getElementById('btnPending');
+                if (balance > 0) {
+                    pendingBtn.href = `invoice.html?orderId=${order.id}&mode=payment`;
+                    pendingBtn.style.display = 'flex';
+                } else {
+                    pendingBtn.style.display = 'none';
+                }
+
+                resultEl.style.display = 'block';
+            } else {
+                // Failure: Show Error
+                resultEl.style.display = 'none';
+                errorEl.style.display = 'block';
+            }
+        }
+    </script>
+</body>
+</html>
