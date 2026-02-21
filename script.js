@@ -1905,18 +1905,24 @@ function addNewRow() {
 function handleProductType(selectEl) {
     activeRow = selectEl.closest('tr');
     const type = selectEl.value;
+    const setIfExists = (id, value) => {
+        const el = document.getElementById(id);
+        if (el) el.value = value;
+    };
 
     // Open FRAME Modal for both Frame AND Sunglasses
     if (type === 'Frame' || type === 'Sunglasses') {
-        document.getElementById('modalFrame').style.display = 'flex';
+        const modal = document.getElementById('modalFrame');
+        if (modal) modal.style.display = 'flex';
         // Clear fields
-        ['frCode','frBrand','frName','frSize','frColor','frMaterial','frPrice','frDisc'].forEach(id => document.getElementById(id).value = '');
+        ['frCode','frBrand','frName','frSize','frColor','frMaterial','frPrice','frDisc'].forEach(id => setIfExists(id, ''));
     } 
     // Open LENS Modal for Lens AND Contact Lens
     else if (type === 'Lens' || type === 'Contact Lens') {
-        document.getElementById('modalLens').style.display = 'flex';
+        const modal = document.getElementById('modalLens');
+        if (modal) modal.style.display = 'flex';
         // Clear fields
-        ['lnCode','lnBrand','lnIndex','lnCoating','lnDesign','lnPrice','lnDisc'].forEach(id => document.getElementById(id).value = '');
+        ['lnCode','lnBrand','lnIndex','lnCoating','lnDesign','lnPrice','lnDisc'].forEach(id => setIfExists(id, ''));
         const lnCustName = document.getElementById('lnCustName');
         const lnCustPhone = document.getElementById('lnCustPhone');
         if (lnCustName) lnCustName.value = "";
@@ -2214,40 +2220,48 @@ function fillLensModalFromOrderItem(item) {
 }
 
 function buildRxDataFromModal() {
+    const getVal = (id) => {
+        const el = document.getElementById(id);
+        return el ? el.value : "";
+    };
+    const isChecked = (id) => {
+        const el = document.getElementById(id);
+        return !!(el && el.checked);
+    };
     const rxData = {
         re: {
-            sph: document.getElementById('rx_r_sph').value,
-            cyl: document.getElementById('rx_r_cyl').value,
-            axis: document.getElementById('rx_r_axis').value,
-            pd: document.getElementById('rx_r_pd').value,
-            va: document.getElementById('rx_r_va').value,
-            nv_sph: document.getElementById('rx_r_nv_sph').value,
-            nv_cyl: document.getElementById('rx_r_nv_cyl').value,
-            nv_axis: document.getElementById('rx_r_nv_axis').value,
-            nv_pd: document.getElementById('rx_r_nv_pd').value,
-            nv_va: document.getElementById('rx_r_nv_va').value,
-            add: document.getElementById('rx_r_add').value
+            sph: getVal('rx_r_sph'),
+            cyl: getVal('rx_r_cyl'),
+            axis: getVal('rx_r_axis'),
+            pd: getVal('rx_r_pd'),
+            va: getVal('rx_r_va'),
+            nv_sph: getVal('rx_r_nv_sph'),
+            nv_cyl: getVal('rx_r_nv_cyl'),
+            nv_axis: getVal('rx_r_nv_axis'),
+            nv_pd: getVal('rx_r_nv_pd'),
+            nv_va: getVal('rx_r_nv_va'),
+            add: getVal('rx_r_add')
         },
         le: {
-            sph: document.getElementById('rx_l_sph').value,
-            cyl: document.getElementById('rx_l_cyl').value,
-            axis: document.getElementById('rx_l_axis').value,
-            pd: document.getElementById('rx_l_pd').value,
-            va: document.getElementById('rx_l_va').value,
-            nv_sph: document.getElementById('rx_l_nv_sph').value,
-            nv_cyl: document.getElementById('rx_l_nv_cyl').value,
-            nv_axis: document.getElementById('rx_l_nv_axis').value,
-            nv_pd: document.getElementById('rx_l_nv_pd').value,
-            nv_va: document.getElementById('rx_l_nv_va').value,
-            add: document.getElementById('rx_l_add').value
+            sph: getVal('rx_l_sph'),
+            cyl: getVal('rx_l_cyl'),
+            axis: getVal('rx_l_axis'),
+            pd: getVal('rx_l_pd'),
+            va: getVal('rx_l_va'),
+            nv_sph: getVal('rx_l_nv_sph'),
+            nv_cyl: getVal('rx_l_nv_cyl'),
+            nv_axis: getVal('rx_l_nv_axis'),
+            nv_pd: getVal('rx_l_nv_pd'),
+            nv_va: getVal('rx_l_nv_va'),
+            add: getVal('rx_l_add')
         },
         usage: []
     };
 
-    if (document.getElementById('use_constant').checked) rxData.usage.push("Constant Use");
-    if (document.getElementById('use_distance').checked) rxData.usage.push("Distance Wear");
-    if (document.getElementById('use_reading').checked) rxData.usage.push("Reading Wear");
-    if (document.getElementById('use_computer').checked) rxData.usage.push("Computer/Office");
+    if (isChecked('use_constant')) rxData.usage.push("Constant Use");
+    if (isChecked('use_distance')) rxData.usage.push("Distance Wear");
+    if (isChecked('use_reading')) rxData.usage.push("Reading Wear");
+    if (isChecked('use_computer')) rxData.usage.push("Computer/Office");
 
     return pruneRxData(rxData);
 }
@@ -2345,52 +2359,60 @@ function saveFrameData() {
 // 5. Save LENS Data to Row
 function saveLensData() {
     if (!activeRow) return;
+    const getVal = (id) => {
+        const el = document.getElementById(id);
+        return el ? el.value : "";
+    };
+    const isChecked = (id) => {
+        const el = document.getElementById(id);
+        return !!(el && el.checked);
+    };
 
     // 1. Capture Product Info
-    const code = document.getElementById('lnCode').value;
-    const brand = document.getElementById('lnBrand').value;
-    const type = document.getElementById('lnType').value;
-    const coating = document.getElementById('lnCoating').value;
-    const indexVal = document.getElementById('lnIndex').value;
+    const code = getVal('lnCode');
+    const brand = getVal('lnBrand');
+    const type = getVal('lnType');
+    const coating = getVal('lnCoating');
+    const indexVal = getVal('lnIndex');
     
     // 2. Capture Financials
-    const price = document.getElementById('lnPrice').value;
-    const disc = document.getElementById('lnDisc').value;
+    const price = getVal('lnPrice');
+    const disc = getVal('lnDisc');
 
     // 3. Capture Prescription Data (Comprehensive)
     const rxData = {
         re: {
-            sph: document.getElementById('rx_r_sph').value,
-            cyl: document.getElementById('rx_r_cyl').value,
-            axis: document.getElementById('rx_r_axis').value,
-            pd: document.getElementById('rx_r_pd').value,
-            va: document.getElementById('rx_r_va').value,
+            sph: getVal('rx_r_sph'),
+            cyl: getVal('rx_r_cyl'),
+            axis: getVal('rx_r_axis'),
+            pd: getVal('rx_r_pd'),
+            va: getVal('rx_r_va'),
             // Near Vision
-            nv_sph: document.getElementById('rx_r_nv_sph').value,
-            nv_cyl: document.getElementById('rx_r_nv_cyl').value,
-            nv_axis: document.getElementById('rx_r_nv_axis').value,
-            add: document.getElementById('rx_r_add').value
+            nv_sph: getVal('rx_r_nv_sph'),
+            nv_cyl: getVal('rx_r_nv_cyl'),
+            nv_axis: getVal('rx_r_nv_axis'),
+            add: getVal('rx_r_add')
         },
         le: {
-            sph: document.getElementById('rx_l_sph').value,
-            cyl: document.getElementById('rx_l_cyl').value,
-            axis: document.getElementById('rx_l_axis').value,
-            pd: document.getElementById('rx_l_pd').value,
-            va: document.getElementById('rx_l_va').value,
+            sph: getVal('rx_l_sph'),
+            cyl: getVal('rx_l_cyl'),
+            axis: getVal('rx_l_axis'),
+            pd: getVal('rx_l_pd'),
+            va: getVal('rx_l_va'),
             // Near Vision
-            nv_sph: document.getElementById('rx_l_nv_sph').value,
-            nv_cyl: document.getElementById('rx_l_nv_cyl').value,
-            nv_axis: document.getElementById('rx_l_nv_axis').value,
-            add: document.getElementById('rx_l_add').value
+            nv_sph: getVal('rx_l_nv_sph'),
+            nv_cyl: getVal('rx_l_nv_cyl'),
+            nv_axis: getVal('rx_l_nv_axis'),
+            add: getVal('rx_l_add')
         },
         usage: []
     };
 
     // Capture Checkboxes
-    if (document.getElementById('use_constant').checked) rxData.usage.push("Constant Use");
-    if (document.getElementById('use_distance').checked) rxData.usage.push("Distance Wear");
-    if (document.getElementById('use_reading').checked) rxData.usage.push("Reading Wear");
-    if (document.getElementById('use_computer').checked) rxData.usage.push("Computer/Office");
+    if (isChecked('use_constant')) rxData.usage.push("Constant Use");
+    if (isChecked('use_distance')) rxData.usage.push("Distance Wear");
+    if (isChecked('use_reading')) rxData.usage.push("Reading Wear");
+    if (isChecked('use_computer')) rxData.usage.push("Computer/Office");
 
     // 4. Create Description String (aligned with invoice output)
     // Format: LENS - [Brand] - [Type] - [Coating] - [Index]
