@@ -784,7 +784,7 @@ function scanBarcode(input) {
     // 5. Visual Feedback
     input.style.borderColor = "green";
 }
-function saveOrder(openInNewTab = false) {
+async function saveOrder(openInNewTab = false) {
     // 1. Force Calculation
     calculateFinal();
     const name = document.getElementById('cName').value;
