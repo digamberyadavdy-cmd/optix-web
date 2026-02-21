@@ -106,6 +106,14 @@ const DEFAULT_CLOUD_SYNC_URL = `https://${FIREBASE_PROJECT_ID}-default-rtdb.fire
 const CLOUD_SYNC_EXCLUDE_KEYS = ['optixLoggedIn', 'optixSessionStart', 'tempCustName', 'tempCustPhone'];
 const FIRESTORE_STATE_EXCLUDE_KEYS = ['optixProducts'];
 const optixMemoryStore = Object.create(null);
+const ENTITY_DOC_COLLECTIONS = {
+    optixOrders: 'orders_state',
+    optixCustomers: 'customers_state',
+    optixExpenses: 'expenses_state',
+    optixStaff: 'staff_state',
+    optixPrescriptions: 'prescriptions_state',
+    optixSettings: 'settings_state'
+};
 let cloudSyncTimer = null;
 let cloudSyncBusy = false;
 let cloudApplyMode = false;
@@ -113,6 +121,10 @@ let firestoreStateApplyMode = false;
 let firestoreStateSyncBusy = false;
 let firestoreStateSyncTimer = null;
 const firestoreStateQueue = new Map();
+let entityDocApplyMode = false;
+let entityDocSyncBusy = false;
+let entityDocSyncTimer = null;
+const entityDocQueue = new Map();
 let firestoreOnline = false;
 let firestoreLastError = "";
 
@@ -139,17 +151,9 @@ function getSettings() {
 async function saveSettings(settings) {
     const serialized = JSON.stringify(settings);
     localStorage.setItem('optixSettings', serialized);
-    if (!db) return true;
-    try {
-        await db.collection('app_state').doc('optixSettings').set({
-            value: serialized,
-            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-        }, { merge: true });
-        return true;
-    } catch (err) {
-        console.error("Settings cloud save failed:", err);
-        return false;
-    }
+    if (!db) return false;
+    await flushEntityDocQueue();
+    return true;
 }
 
 async function checkCloudConnection() {
@@ -184,7 +188,9 @@ function isOptixKey(key) {
 }
 
 function shouldSyncFirestoreStateKey(key) {
-    return shouldSyncKey(key) && !FIRESTORE_STATE_EXCLUDE_KEYS.includes(key);
+    return shouldSyncKey(key)
+        && !FIRESTORE_STATE_EXCLUDE_KEYS.includes(key)
+        && !ENTITY_DOC_COLLECTIONS[key];
 }
 
 function getCloudSyncConfig() {
@@ -282,6 +288,7 @@ async function syncNowToCloud() {
     let okRtdb = false;
     try {
         if (db) {
+            await flushEntityDocQueue();
             await flushFirestoreStateQueue();
             okFirestore = true;
         }
@@ -302,6 +309,7 @@ async function pullNowFromCloud() {
     let okRtdb = false;
     try {
         if (db) {
+            await pullEntityDocs();
             await pullFirestoreState();
             okFirestore = true;
         }
@@ -366,6 +374,86 @@ async function flushFirestoreStateQueue() {
     } finally {
         firestoreStateSyncBusy = false;
     }
+}
+
+function queueEntityDocSync(key, value, isDelete = false) {
+    if (!db || entityDocApplyMode || !ENTITY_DOC_COLLECTIONS[key]) return;
+    entityDocQueue.set(key, { key, value, isDelete });
+    if (entityDocSyncTimer) clearTimeout(entityDocSyncTimer);
+    entityDocSyncTimer = setTimeout(async () => {
+        await flushEntityDocQueue();
+    }, 600);
+}
+
+async function flushEntityDocQueue() {
+    if (!db || entityDocApplyMode || entityDocSyncBusy) return;
+    if (entityDocQueue.size === 0) return;
+    entityDocSyncBusy = true;
+    try {
+        const batch = db.batch();
+        entityDocQueue.forEach((item) => {
+            const collection = ENTITY_DOC_COLLECTIONS[item.key];
+            if (!collection) return;
+            const ref = db.collection(collection).doc('main');
+            batch.set(ref, {
+                value: item.isDelete ? null : item.value,
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+            }, { merge: true });
+        });
+        entityDocQueue.clear();
+        await batch.commit();
+        firestoreOnline = true;
+        firestoreLastError = "";
+    } catch (err) {
+        console.error('Entity doc sync failed:', err);
+        firestoreOnline = false;
+        firestoreLastError = (err && err.message) ? err.message : String(err);
+    } finally {
+        entityDocSyncBusy = false;
+    }
+}
+
+async function pullEntityDocs() {
+    if (!db) return;
+    try {
+        entityDocApplyMode = true;
+        const keys = Object.keys(ENTITY_DOC_COLLECTIONS);
+        for (let i = 0; i < keys.length; i++) {
+            const key = keys[i];
+            const collection = ENTITY_DOC_COLLECTIONS[key];
+            const snap = await db.collection(collection).doc('main').get();
+            if (!snap.exists) continue;
+            const data = snap.data() || {};
+            if (typeof data.value === 'string') {
+                localStorage.setItem(key, data.value);
+            }
+        }
+        firestoreOnline = true;
+        firestoreLastError = "";
+    } catch (err) {
+        console.error('Entity doc pull failed:', err);
+        firestoreOnline = false;
+        firestoreLastError = (err && err.message) ? err.message : String(err);
+    } finally {
+        entityDocApplyMode = false;
+    }
+}
+
+function subscribeEntityDocsRealtime() {
+    if (!db || window.__optixEntityDocsSubscribed) return;
+    window.__optixEntityDocsSubscribed = true;
+    Object.keys(ENTITY_DOC_COLLECTIONS).forEach((key) => {
+        const collection = ENTITY_DOC_COLLECTIONS[key];
+        db.collection(collection).doc('main').onSnapshot((snap) => {
+            const data = snap.exists ? (snap.data() || {}) : {};
+            if (typeof data.value !== 'string') return;
+            entityDocApplyMode = true;
+            localStorage.setItem(key, data.value);
+            entityDocApplyMode = false;
+        }, (err) => {
+            console.error(`Realtime sync failed for ${key}:`, err);
+        });
+    });
 }
 
 async function seedFirestoreStateFromLocal() {
@@ -440,6 +528,7 @@ function hookStorageForCloudSync() {
             optixMemoryStore[key] = String(value);
             _removeItem(key);
             if (shouldSyncKey(key)) scheduleCloudSync();
+            if (!entityDocApplyMode) queueEntityDocSync(key, String(value), false);
             if (!firestoreStateApplyMode) queueFirestoreStateSync(key, String(value), false);
             return;
         }
@@ -450,6 +539,7 @@ function hookStorageForCloudSync() {
             delete optixMemoryStore[key];
             _removeItem(key);
             if (shouldSyncKey(key)) scheduleCloudSync();
+            if (!entityDocApplyMode) queueEntityDocSync(key, null, true);
             if (!firestoreStateApplyMode) queueFirestoreStateSync(key, null, true);
             return;
         }
@@ -464,6 +554,8 @@ function hookStorageForCloudSync() {
 
 async function initCloudSync() {
     hookStorageForCloudSync();
+    subscribeEntityDocsRealtime();
+    await pullEntityDocs();
     await pullFirestoreState();
     await pullCloudSnapshot(false);
 }
