@@ -646,7 +646,7 @@ function generateBarcode() {
 }
 
 async function saveProductToCloud(productData) {
-    if (!db) return null;
+    if (!db) throw new Error("Firestore not initialized");
     const ref = await db.collection("products").add(productData);
     return { ...productData, _docId: ref.id };
 }
@@ -721,7 +721,7 @@ async function saveProductDetailed() {
 
         const newProd = {
             id: Date.now() + i, // Unique ID for database
-            category: document.getElementById('nCat').value,
+            category: document.getElementById('nType')?.value || document.getElementById('nCat')?.value || "Other",
             code: uniqueCode, // <--- UNIQUE BARCODE
             name: name,
             brand: document.getElementById('nBrand').value,
@@ -742,8 +742,9 @@ async function saveProductDetailed() {
                 const cloudSaved = await saveProductToCloud(newProd);
                 products.push(cloudSaved || newProd);
             } catch (err) {
-                console.error("Cloud save failed for product; saving locally.", err);
-                products.push(newProd);
+                console.error("Cloud save failed for product.", err);
+                alert("Cloud save failed. Product was not added.");
+                return;
             }
         } else {
             products.push(newProd);
@@ -768,9 +769,13 @@ async function loadProducts() {
 
     if (db) subscribeProductsRealtime();
     let products = JSON.parse(localStorage.getItem('optixProducts')) || [];
-    if (products.length === 0 && db) {
-        const cloudProducts = await ensureProductsCache();
-        if (Array.isArray(cloudProducts)) products = cloudProducts;
+    if (db) {
+        try {
+            const cloudProducts = await loadProductsFromCloud();
+            if (Array.isArray(cloudProducts)) products = cloudProducts;
+        } catch (err) {
+            console.error("Cloud load failed, using cached data.", err);
+        }
     }
     
     // Get Search Inputs
@@ -873,15 +878,17 @@ async function updateProductAtIndex(index) {
     p.sellPrice = parseFloat(document.getElementById('nSell').value) || 0;
     p.qty = parseInt(document.getElementById('nQty').value) || 0;
 
-    localStorage.setItem('optixProducts', JSON.stringify(products));
     if (db && p._docId) {
         try {
             const { _docId, ...cloudPayload } = p;
             await db.collection("products").doc(_docId).set(cloudPayload, { merge: true });
         } catch (err) {
-            console.error("Cloud update failed; local update kept.", err);
+            console.error("Cloud update failed.", err);
+            alert("Cloud update failed. Product was not updated.");
+            return;
         }
     }
+    localStorage.setItem('optixProducts', JSON.stringify(products));
     
     alert("Product Updated Successfully!");
     document.getElementById('addModal').style.display = 'none';
@@ -899,14 +906,16 @@ async function deleteProduct(index) {
     if (confirm("Delete this product?")) {
         const products = JSON.parse(localStorage.getItem('optixProducts')) || [];
         const [deleted] = products.splice(index, 1);
-        localStorage.setItem('optixProducts', JSON.stringify(products));
         if (db && deleted && deleted._docId) {
             try {
                 await db.collection("products").doc(deleted._docId).delete();
             } catch (err) {
-                console.error("Cloud delete failed; local delete kept.", err);
+                console.error("Cloud delete failed.", err);
+                alert("Cloud delete failed. Product was not deleted.");
+                return;
             }
         }
+        localStorage.setItem('optixProducts', JSON.stringify(products));
         await loadProducts();
     }
 }
@@ -1612,8 +1621,9 @@ async function saveNewInventory() {
                     const cloudSaved = await saveProductToCloud(newProd);
                     products.push(cloudSaved || newProd);
                 } catch (err) {
-                    console.error("Cloud save failed for product; saving locally.", err);
-                    products.push(newProd);
+                    console.error("Cloud save failed for product.", err);
+                    alert("Cloud save failed. Product was not added.");
+                    return;
                 }
             } else {
                 products.push(newProd);
@@ -1645,8 +1655,9 @@ async function saveNewInventory() {
                 const cloudSaved = await saveProductToCloud(newProd);
                 products.push(cloudSaved || newProd);
             } catch (err) {
-                console.error("Cloud save failed for product; saving locally.", err);
-                products.push(newProd);
+                console.error("Cloud save failed for product.", err);
+                alert("Cloud save failed. Product was not added.");
+                return;
             }
         } else {
             products.push(newProd);
