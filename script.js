@@ -599,8 +599,13 @@ async function saveProductDetailed() {
         };
         
         if (db) {
-            const cloudSaved = await saveProductToCloud(newProd);
-            products.push(cloudSaved || newProd);
+            try {
+                const cloudSaved = await saveProductToCloud(newProd);
+                products.push(cloudSaved || newProd);
+            } catch (err) {
+                console.error("Cloud save failed for product; saving locally.", err);
+                products.push(newProd);
+            }
         } else {
             products.push(newProd);
         }
@@ -726,8 +731,12 @@ async function updateProductAtIndex(index) {
 
     localStorage.setItem('optixProducts', JSON.stringify(products));
     if (db && p._docId) {
-        const { _docId, ...cloudPayload } = p;
-        await db.collection("products").doc(_docId).set(cloudPayload, { merge: true });
+        try {
+            const { _docId, ...cloudPayload } = p;
+            await db.collection("products").doc(_docId).set(cloudPayload, { merge: true });
+        } catch (err) {
+            console.error("Cloud update failed; local update kept.", err);
+        }
     }
     
     alert("Product Updated Successfully!");
@@ -748,9 +757,21 @@ async function deleteProduct(index) {
         const [deleted] = products.splice(index, 1);
         localStorage.setItem('optixProducts', JSON.stringify(products));
         if (db && deleted && deleted._docId) {
-            await db.collection("products").doc(deleted._docId).delete();
+            try {
+                await db.collection("products").doc(deleted._docId).delete();
+            } catch (err) {
+                console.error("Cloud delete failed; local delete kept.", err);
+            }
         }
         await loadProducts();
+    }
+}
+
+function resetProductModalForAdd() {
+    const saveBtn = document.querySelector('#addModal button[onclick^="updateProductAtIndex"]');
+    if (saveBtn) {
+        saveBtn.innerText = "Add Inventory ->";
+        saveBtn.setAttribute('onclick', 'saveNewInventory()');
     }
 }
 
@@ -1443,8 +1464,13 @@ async function saveNewInventory() {
                 status: 'Active'
             };
             if (db) {
-                const cloudSaved = await saveProductToCloud(newProd);
-                products.push(cloudSaved || newProd);
+                try {
+                    const cloudSaved = await saveProductToCloud(newProd);
+                    products.push(cloudSaved || newProd);
+                } catch (err) {
+                    console.error("Cloud save failed for product; saving locally.", err);
+                    products.push(newProd);
+                }
             } else {
                 products.push(newProd);
             }
@@ -1471,8 +1497,13 @@ async function saveNewInventory() {
             status: 'Active'
         };
         if (db) {
-            const cloudSaved = await saveProductToCloud(newProd);
-            products.push(cloudSaved || newProd);
+            try {
+                const cloudSaved = await saveProductToCloud(newProd);
+                products.push(cloudSaved || newProd);
+            } catch (err) {
+                console.error("Cloud save failed for product; saving locally.", err);
+                products.push(newProd);
+            }
         } else {
             products.push(newProd);
         }
@@ -1481,6 +1512,7 @@ async function saveNewInventory() {
 
     localStorage.setItem('optixProducts', JSON.stringify(products));
     document.getElementById('addModal').style.display = 'none';
+    resetProductModalForAdd();
     await loadProducts(); // Refresh list
 }
 

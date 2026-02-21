@@ -388,8 +388,14 @@
     <script src="script.js"></script>
     <script>
         document.addEventListener("DOMContentLoaded", loadProducts);
-        function openAddModal() { document.getElementById('addModal').style.display = 'block'; }
-        function closeAddModal() { document.getElementById('addModal').style.display = 'none'; }
+        function openAddModal() {
+            document.getElementById('addModal').style.display = 'block';
+            if (typeof resetProductModalForAdd === 'function') resetProductModalForAdd();
+        }
+        function closeAddModal() {
+            document.getElementById('addModal').style.display = 'none';
+            if (typeof resetProductModalForAdd === 'function') resetProductModalForAdd();
+        }
     </script>
 </body>
 </html>
