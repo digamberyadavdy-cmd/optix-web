@@ -1,0 +1,156 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Accounts & Ledger</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script></head>
+<body>
+<div class="top-bar">
+    <div class="nav-icons">
+        <div class="nav-icon bg-black" style="width:60px"><i class="fas fa-glasses"></i></div>
+        <a href="home.html"><div class="nav-icon bg-green"><i class="fas fa-home"></i></div></a>
+        <a href="dashboard.html"><div class="nav-icon bg-orange"><i class="fas fa-tachometer-alt"></i></div></a>
+        <div class="nav-icon bg-blue"><i class="fas fa-search"></i></div>
+        <div class="nav-icon bg-yellow"><i class="fas fa-th"></i></div>
+        <div class="nav-icon bg-purple"><i class="fas fa-cog"></i></div>
+        <div class="nav-icon bg-red"><i class="fas fa-user"></i></div>
+    </div>
+    <div class="user-info">
+    <strong>Welcome, Admin</strong><br>
+    <span id="liveClock">Online</span>
+    <div style="margin-top:5px;">
+        <a href="#" onclick="performLogout()" style="color:#ff9800; font-weight:bold; text-decoration:none; font-size:11px;">
+            <i class="fas fa-sign-out-alt"></i> Logout
+        </a>
+    </div>
+</div>
+</div>
+
+<div class="main-menu">
+    <div class="menu-item">
+        <i class="fas fa-box"></i> PRODUCTS <i class="fas fa-caret-down" style="font-size:10px; margin-left:3px;"></i>
+        <div class="dropdown-content">
+            <a href="products.html">Add New Product</a>
+            <a href="products.html">Product List</a>
+            <a href="products.html">Frame</a>
+            <a href="products.html">Sunglasses</a>
+            <a href="products.html">Lens</a>
+            <a href="products.html">Contact Lens</a>
+            <a href="products.html">Solution</a>
+            <a href="products.html">Other</a>
+            <a href="products.html">Non-Chargeable</a>
+        </div>
+    </div>
+    
+        <div class="menu-item">
+            <i class="fas fa-clipboard-list"></i> INVENTORY <i class="fas fa-caret-down" style="font-size:10px; margin-left:3px;"></i>
+            <div class="dropdown-content">
+                <a href="inventory.html">Inventory Levels</a>
+                <a href="inventory.html">Transfer Stock</a>
+                <a href="inventory.html">Transfer Using Barcode</a>
+                <a href="inventory.html">Transfer History</a>
+                <a href="audit.html" style="color:rgb(243, 243, 237); font-weight:bold;">Inventory Audit</a> 
+                <a href="inventory.html">Stock Movement</a>
+                <a href="barcode.html">Track Barcode</a>
+            </div>
+        </div>
+
+    <div class="menu-item">
+        <i class="fas fa-tag"></i> PURCHASE <i class="fas fa-caret-down" style="font-size:10px; margin-left:3px;"></i>
+        <div class="dropdown-content">
+            <a href="purchase.html">Add Purchase</a>
+            <a href="purchase.html">Purchase History</a>
+            <a href="purchase.html">Edit Purchase</a>
+            <a href="purchase.html">Purchase Return</a>
+            <a href="purchase.html">Pending Challans</a>
+            <a href="purchase.html">Pending Purchases</a>
+            <a href="barcode.html">Generate Barcode</a>
+            <a href="barcode.html">Confirm Barcode</a>
+        </div>
+    </div>
+    
+    <div class="menu-item">
+        <i class="fas fa-shopping-cart"></i> SALES <i class="fas fa-caret-down" style="font-size:10px; margin-left:3px;"></i>
+        <div class="dropdown-content">
+            <a href="order.html">Create New Order</a>
+            <a href="sales_history.html?view=pending">Pending Orders</a>
+            <a href="sales_history.html?view=history">Sales History</a>
+            <a href="sales_history.html?view=return">Sales Return</a>
+            <a href="sales_history.html?view=statement">Daily Statement PDF</a>
+            <a href="invoice.html">Create Bulk Invoice</a>
+        </div>
+    </div>
+
+    <div class="menu-item">
+        <i class="fas fa-users"></i> CUSTOMER <i class="fas fa-caret-down" style="font-size:10px; margin-left:3px;"></i>
+         <div class="dropdown-content">
+            <a href="customer.html">Add Customer</a>
+            <a href="customer.html">Customer List</a>
+            <a href="customer.html">DND Customers</a>
+            <a href="customer.html">Customer Label</a>
+            <a href="customer.html">Birthday List</a>
+        </div>
+    </div>
+
+    <a href="reports.html" class="menu-item"><i class="fas fa-chart-bar"></i> REPORTS</a>
+
+    <div class="menu-item">
+        <i class="fas fa-sms"></i> SMS <i class="fas fa-caret-down" style="font-size:10px; margin-left:3px;"></i>
+         <div class="dropdown-content">
+            <a href="sms.html">Send Bulk SMS</a>
+            <a href="sms.html">SMS Account History</a>
+            <a href="sms.html">SMS Purchase History</a>
+            <a href="sms.html">Feedback SMS/WhatsApp</a>
+            <a href="sms.html">Sender ID's</a>
+        </div>
+    </div>
+
+    <div class="menu-item">
+        <i class="fas fa-file-medical"></i> PRESCRIPTION <i class="fas fa-caret-down" style="font-size:10px; margin-left:3px;"></i>
+        <div class="dropdown-content">
+            <a href="prescription.html">Add Prescription</a>
+            <a href="prescription.html">Prescription Database</a>
+            <a href="prescription.html">Patient Details</a>
+            <a href="prescription.html">Appointments</a>
+        </div>
+    </div>
+
+    <div class="menu-item">
+        <i class="fas fa-lock"></i> ACCOUNT <i class="fas fa-caret-down" style="font-size:10px; margin-left:3px;"></i>
+        <div class="dropdown-content" style="min-width:240px; right:0; left:auto;">
+            <a href="expense.html">Expenses</a>
+            <a href="accounts.html">Ledgers</a>
+            <a href="accounts.html">Group Ledgers</a>
+            <a href="accounts.html">Vouchers</a>
+            <a href="accounts.html">Account Payable</a>
+            <a href="accounts.html">Account Receivable</a>
+            <a href="accounts.html">Account Statement</a>
+            <a href="accounts.html">Trading, P/L Statement</a>
+        </div>
+    </div>
+</div>
+    <div class="billing-container">
+        <div class="cust-info-box" style="background:#fff8e1; border-color:#ffc107">
+            <h3 style="grid-column:span 4; margin:0;">Financial Snapshot</h3>
+            <div class="form-group"><label>Total Sales (+)</label><input type="text" id="accTotalSales" style="color:green; font-weight:bold;" readonly></div>
+            <div class="form-group"><label>Total Expenses (-)</label><input type="text" id="accTotalExp" style="color:red; font-weight:bold;" readonly></div>
+            <div class="form-group"><label>Net Profit</label><input type="text" id="accNetProfit" style="font-weight:bold;" readonly></div>
+             <div class="form-group"><label>Pending Receivables</label><input type="text" id="accPending" style="color:orange; font-weight:bold;" readonly></div>
+        </div>
+        <div class="product-table-container">
+            <h3>Recent Transactions</h3>
+            <table>
+                <thead><tr><th>Date</th><th>Type</th><th>Description</th><th>Amount</th></tr></thead>
+                <tbody id="ledgerTable"></tbody>
+            </table>
+        </div>
+    </div>
+    <script src="script.js"></script>
+    <script>document.addEventListener("DOMContentLoaded", loadAccounts);</script>
+</body>
+</html>
+
+

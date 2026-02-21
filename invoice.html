@@ -1,0 +1,368 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Invoice Print</title>
+    <style>
+        body { font-family: 'Helvetica', sans-serif; padding: 20px; max-width: 800px; margin: auto; color: #333; }
+        
+        .header { text-align: center; border-bottom: 2px solid #333; padding-bottom: 10px; margin-bottom: 20px; }
+        .header h1 { margin: 0; color: #2563eb; }
+        .header p { margin: 5px 0; font-size: 14px; }
+
+        .bill-info { display: flex; justify-content: space-between; margin-bottom: 20px; }
+        .box { width: 48%; border: 1px solid #ddd; padding: 10px; font-size: 14px; }
+        .box h3 { margin-top: 0; border-bottom: 1px solid #eee; padding-bottom: 5px; }
+
+        table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+        th, td { border: 1px solid #ccc; padding: 8px; text-align: left; font-size: 13px; }
+        th { background: #f4f4f4; }
+        .text-right { text-align: right; }
+
+        .totals { display: flex; justify-content: flex-end; }
+        .totals table { width: 300px; }
+        .totals th { text-align: right; }
+
+        .footer { margin-top: 40px; font-size: 12px; text-align: center; border-top: 1px solid #ccc; padding-top: 10px; }
+
+        /* Hide buttons when printing */
+        @media print {
+            .no-print { display: none; }
+            body { padding: 0; }
+        }
+        
+        .btn-print { background: #2563eb; color: white; padding: 10px 20px; border: none; cursor: pointer; font-size: 16px; border-radius: 4px; }
+        .btn-back { background: #555; color: white; padding: 10px 20px; border: none; cursor: pointer; font-size: 16px; border-radius: 4px; text-decoration: none; display: inline-block;}
+            /* Add this to invoice.html style block */
+        .rx-table-container { margin-top: 30px; border: 2px solid #000; }
+        .rx-header-row { background: #eee; font-weight: bold; text-align: center; border-bottom: 1px solid #000; }
+        .rx-data-table { width: 100%; border-collapse: collapse; text-align: center; font-size: 12px; }
+        .rx-data-table td, .rx-data-table th { border: 1px solid #000; padding: 5px; }
+        .rx-usage { padding: 5px; font-weight: bold; font-size: 13px; border-top: 1px solid #000; }
+        .rx-eye-label { font-weight: bold; background: #f9f9f9; width: 40px; }
+    </style>
+<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script></head>
+<body>
+
+    <div class="no-print" style="margin-bottom: 20px;">
+        <button onclick="window.print()" class="btn-print">ðŸ–¨ï¸ Print Invoice</button>
+        <a href="dashboard.html" class="btn-back">Back to Dashboard</a>
+    </div>
+
+    <div class="header">
+        <h1>CITY OPTICAL CENTER</h1>
+        <p>Shop No. 12, Main Market Road, City Center - 492001</p>
+        <p>Phone: 98765-43210 | Email: contact@cityoptical.com</p>
+    </div>
+
+    <div class="bill-info">
+        <div class="box">
+            <h3>Bill To:</h3>
+            <div id="inv-name">Name: -</div>
+            <div id="inv-phone">Phone: -</div>
+            <div id="inv-date">Date: -</div>
+        </div>
+        <div class="box">
+            <h3>Invoice Details:</h3>
+            <div id="inv-no-display">Invoice No: <strong>INV-2026/001</strong></div>
+            <div id="inv-delivery" style="color:red; font-weight:bold; margin-top:5px">Delivery: -</div>
+        </div>
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th>#</th>
+                <th>Description</th>
+                <th class="text-right">Price</th>
+                <th class="text-right">Qty</th>
+                <th class="text-right">Disc%</th>
+                <th class="text-right">Disc Amt</th>
+                <th class="text-right">Total</th>
+            </tr>
+        </thead>
+        <tbody id="inv-items">
+            </tbody>
+    </table>
+
+    <div class="totals">
+        <table>
+            <tr>
+                <th>Total Amount:</th>
+                <td class="text-right" id="inv-gross">0.00</td>
+            </tr>
+            <tr>
+                <th>Total Discount:</th>
+                <td class="text-right" id="inv-discount">0.00</td>
+            </tr>
+            <tr>
+                <th>Payable Amount:</th>
+                <td class="text-right" id="inv-total">0.00</td>
+            </tr>
+            <tr>
+                <th>Paid Amount:</th>
+                <td class="text-right" id="inv-paid">0.00</td>
+            </tr>
+            <tr>
+                <th style="font-size: 16px;">Balance Due:</th>
+                <td class="text-right" style="font-size: 16px; font-weight: bold;" id="inv-balance">0.00</td>
+            </tr>
+        </table>
+    </div>
+
+    <div id="payment-panel" class="no-print" style="display:none; margin-top:20px; border:1px solid #ddd; padding:12px; border-radius:4px;">
+        <h3 style="margin:0 0 10px 0;">Add Remaining Payment</h3>
+        <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:10px; margin-bottom:10px;">
+            <div>
+                <label style="font-size:12px; font-weight:bold;">Cash Amount</label>
+                <input type="number" id="payAddCash" value="0" style="width:100%; padding:6px; border:1px solid #ccc; border-radius:3px;">
+            </div>
+            <div>
+                <label style="font-size:12px; font-weight:bold;">UPI Amount</label>
+                <input type="number" id="payAddUPI" value="0" style="width:100%; padding:6px; border:1px solid #ccc; border-radius:3px;">
+            </div>
+            <div>
+                <label style="font-size:12px; font-weight:bold;">Bank/Card Amount</label>
+                <input type="number" id="payAddBank" value="0" style="width:100%; padding:6px; border:1px solid #ccc; border-radius:3px;">
+            </div>
+        </div>
+        <button class="btn-print" onclick="saveAdditionalPayment()">Save Payment & Confirm</button>
+    </div>
+
+    <div class="footer">
+        <p>Thank you for your business!</p>
+        <p>Terms: Goods once sold will not be taken back. Please bring this bill for delivery.</p>
+    </div>
+
+    <script>
+        let activeOrderId = null;
+        let activeOrder = null;
+
+        function formatFY(dateStr) {
+            const d = dateStr ? new Date(dateStr) : new Date();
+            if (isNaN(d)) return "FY" + new Date().getFullYear() + "-" + String(new Date().getFullYear() + 1).slice(-2);
+            const year = d.getFullYear();
+            const month = d.getMonth(); // 0-based
+            const startYear = month >= 3 ? year : year - 1; // FY starts in April
+            const endYear = startYear + 1;
+            return `FY${startYear}-${String(endYear).slice(-2)}`;
+        }
+
+        function formatOrderNo(order) {
+            const fy = formatFY(order && order.date);
+            const id = order && order.id ? order.id : "";
+            return `${fy}/${id}`;
+        }
+
+        function computeOrderTotals(order) {
+            const items = (order && order.items) ? order.items : [];
+            let gross = 0;
+            let net = 0;
+            items.forEach(item => {
+                const qty = parseFloat(item.qty) || 0;
+                const price = parseFloat(item.price) || 0;
+                const total = parseFloat(item.total) || 0;
+                gross += qty * price;
+                net += total;
+            });
+            const rowDiscount = gross - net;
+            const extraDiscount = parseFloat(order && order.discount) || 0;
+            const totalDiscount = rowDiscount + extraDiscount;
+            return { gross, net, rowDiscount, extraDiscount, totalDiscount };
+        }
+
+        function parseRxAny(val) {
+            if (!val) return null;
+            if (typeof val === "object") return val;
+            if (typeof val === "string") {
+                let out = safeParseRx(val);
+                if (out) return out;
+                try {
+                    const once = JSON.parse(val);
+                    if (typeof once === "string") return safeParseRx(once);
+                    return once;
+                } catch (e) {
+                    return null;
+                }
+            }
+            return null;
+        }
+
+        document.addEventListener("DOMContentLoaded", () => {
+            const orders = JSON.parse(localStorage.getItem('optixOrders')) || [];
+            const urlParams = new URLSearchParams(window.location.search);
+            const paramId = urlParams.get('orderId');
+            const mode = urlParams.get('mode');
+            const orderToLoad = paramId ? orders.find(o => o.id == paramId) : orders[orders.length - 1];
+
+            if (orderToLoad) {
+                activeOrderId = orderToLoad.id;
+                activeOrder = orderToLoad;
+                // --- 1. Basic Details ---
+                document.getElementById('inv-name').innerHTML = `Name: <strong>${orderToLoad.name}</strong>`;
+                document.getElementById('inv-phone').innerText = "Phone: " + orderToLoad.phone;
+                document.getElementById('inv-date').innerText = "Date: " + new Date(orderToLoad.date).toLocaleDateString();
+                const settings = JSON.parse(localStorage.getItem('optixSettings') || "{}");
+                const useAutoInv = settings.autoInvoiceNo !== false;
+                const invNo = (useAutoInv && orderToLoad.invoiceNo)
+                    ? orderToLoad.invoiceNo.toString().padStart(6, '0')
+                    : orderToLoad.id.toString().slice(-6);
+                document.getElementById('inv-no-display').innerHTML = `Invoice No: <strong>INV-${invNo}</strong>`;
+
+                // --- 2. Render Items ---
+                const tbody = document.getElementById('inv-items');
+                tbody.innerHTML = "";
+                const rxBlocks = [];
+
+                if (orderToLoad.items && orderToLoad.items.length > 0) {
+                    orderToLoad.items.forEach((item, index) => {
+                        tbody.insertAdjacentHTML('beforeend', `
+                            <tr>
+                                <td>${index + 1}</td>
+                                <td>${item.desc}</td>
+                                <td class="text-right">${parseFloat(item.price).toFixed(2)}</td>
+                                <td class="text-right">${item.qty}</td>
+                                <td class="text-right">${(parseFloat(item.disc) || 0).toFixed(2)}</td>
+                                <td class="text-right">${((parseFloat(item.qty) || 0) * (parseFloat(item.price) || 0) * ((parseFloat(item.disc) || 0) / 100)).toFixed(2)}</td>
+                                <td class="text-right">${parseFloat(item.total).toFixed(2)}</td>
+                            </tr>
+                        `);
+
+                        const rxObj = parseRxAny(item.rx);
+                        if (rxObj) rxBlocks.push(generateRxTableHTML(rxObj, item.desc || `Item #${index + 1}`, orderToLoad.name));
+                    });
+                }
+
+                // --- 3. Render Totals ---
+                const totals = computeOrderTotals(orderToLoad);
+                document.getElementById('inv-gross').innerText = "Rs " + totals.gross.toFixed(2);
+                document.getElementById('inv-discount').innerText = "Rs " + totals.totalDiscount.toFixed(2);
+                document.getElementById('inv-total').innerText = "Rs " + parseFloat(orderToLoad.amount).toFixed(2);
+                document.getElementById('inv-paid').innerText = "Rs " + parseFloat(orderToLoad.paid).toFixed(2);
+                document.getElementById('inv-balance').innerText = "Rs " + (orderToLoad.amount - orderToLoad.paid).toFixed(2);
+
+                // --- 5. Show Payment Panel if needed ---
+                if (mode === "payment") {
+                    const panel = document.getElementById('payment-panel');
+                    if (panel) panel.style.display = 'block';
+                }
+
+                // --- 4. Append Prescription Section at Bottom ---
+                if (rxBlocks.length > 0) {
+                    const footer = document.querySelector('.footer');
+                    const rxContainer = document.createElement('div');
+                    rxContainer.innerHTML = `<h3 style="text-align:center; text-decoration:underline; margin-top:30px;">PRESCRIPTION DETAILS</h3>` + rxBlocks.join('');
+                    document.body.insertBefore(rxContainer, footer);
+                }
+            }
+        });
+
+        function saveAdditionalPayment() {
+            if (!activeOrderId) return;
+
+            const addCash = parseFloat(document.getElementById('payAddCash').value) || 0;
+            const addUpi = parseFloat(document.getElementById('payAddUPI').value) || 0;
+            const addBank = parseFloat(document.getElementById('payAddBank').value) || 0;
+            const addTotal = addCash + addUpi + addBank;
+
+            if (addTotal <= 0) {
+                alert("Please enter a payment amount.");
+                return;
+            }
+
+            const orders = JSON.parse(localStorage.getItem('optixOrders')) || [];
+            const idx = orders.findIndex(o => o.id == activeOrderId);
+            if (idx === -1) return;
+
+            orders[idx].paid = (parseFloat(orders[idx].paid) || 0) + addTotal;
+            orders[idx].paidCash = (parseFloat(orders[idx].paidCash) || 0) + addCash;
+            orders[idx].paidUpi = (parseFloat(orders[idx].paidUpi) || 0) + addUpi;
+            orders[idx].paidBank = (parseFloat(orders[idx].paidBank) || 0) + addBank;
+
+            if (orders[idx].paid >= orders[idx].amount) {
+                orders[idx].status = "Confirmed";
+            }
+
+            localStorage.setItem('optixOrders', JSON.stringify(orders));
+
+            // Update UI totals
+            document.getElementById('inv-paid').innerText = "Rs " + parseFloat(orders[idx].paid).toFixed(2);
+            document.getElementById('inv-balance').innerText = "Rs " + (orders[idx].amount - orders[idx].paid).toFixed(2);
+
+            if (orders[idx].status === "Confirmed") {
+                alert("Payment saved. Order confirmed!");
+                window.location.href = "sales_history.html?view=history";
+            } else {
+                alert("Payment saved. Balance still pending.");
+            }
+        }
+
+        function safeParseRx(rxStr) {
+            try { return JSON.parse(rxStr); } catch (e) { return null; }
+        }
+
+        // Helper to generate the exact table format from Screenshot 224839
+        function generateRxTableHTML(rx, title, customerName) {
+            let usageStr = rx.usage && rx.usage.length > 0 ? "&#9745; " + rx.usage.join(", ") : "&#9744; Constant Use";
+            const nameLine = customerName ? `Customer: ${customerName}` : "";
+
+            return `
+            <div style="margin-bottom: 20px;">
+                <div style="font-weight:bold; margin:8px 0 2px 0; font-size:14px;">${title ? `Power For: ${title}` : "Prescription"}</div>
+                ${nameLine ? `<div style="margin:0 0 6px 0; font-size:13px;">${nameLine}</div>` : ""}
+                <table class="rx-data-table" style="border: 2px solid black; margin-top:5px; font-size:13px;">
+                    <thead>
+                        <tr style="background:#ddd;">
+                            <th colspan="5" style="border-right:2px solid black;">RIGHT EYE (OD)</th>
+                            <th colspan="5">LEFT EYE (OS)</th>
+                        </tr>
+                        <tr>
+                            <th>SPH</th> <th>CYL</th> <th>AXIS</th> <th>PD</th> <th>VA</th>
+                            <th style="border-left:2px solid black;">SPH</th> <th>CYL</th> <th>AXIS</th> <th>PD</th> <th>VA</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>${rx.re?.sph || '-'}</td>
+                            <td>${rx.re?.cyl || '-'}</td>
+                            <td>${rx.re?.axis || '-'}</td>
+                            <td>${rx.re?.pd || '-'}</td>
+                            <td>${rx.re?.va || '-'}</td>
+                            
+                            <td style="border-left:2px solid black;">${rx.le?.sph || '-'}</td>
+                            <td>${rx.le?.cyl || '-'}</td>
+                            <td>${rx.le?.axis || '-'}</td>
+                            <td>${rx.le?.pd || '-'}</td>
+                            <td>${rx.le?.va || '-'}</td>
+                        </tr>
+                        <tr>
+                            <td>${rx.re?.nv_sph || '-'}</td>
+                            <td>${rx.re?.nv_cyl || '-'}</td>
+                            <td>${rx.re?.nv_axis || '-'}</td>
+                            <td>-</td>
+                            <td>-</td>
+
+                            <td style="border-left:2px solid black;">${rx.le?.nv_sph || '-'}</td>
+                            <td>${rx.le?.nv_cyl || '-'}</td>
+                            <td>${rx.le?.nv_axis || '-'}</td>
+                            <td>-</td>
+                            <td>-</td>
+                        </tr>
+                        <tr>
+                            <td colspan="5" style="text-align:left; padding-left:10px; border-right:2px solid black;"><strong>ADD:</strong> ${rx.re?.add || '-'}</td>
+                            <td colspan="5" style="text-align:left; padding-left:10px;"><strong>ADD:</strong> ${rx.le?.add || '-'}</td>
+                        </tr>
+                    </tbody>
+                </table>
+                <div style="font-size:14px; font-weight:bold; margin-top:5px;">${usageStr}</div>
+            </div>
+            `;
+        }
+    </script>
+</body>
+</html>
+
+
+
+

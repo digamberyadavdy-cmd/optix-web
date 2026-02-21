@@ -1,0 +1,184 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Inventory Audit</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+
+    <style>
+        .audit-header { background: #37474f; color: white; padding: 20px; border-radius: 5px 5px 0 0; display: flex; justify-content: space-between; align-items: center; }
+        .audit-stats { display: flex; gap: 20px; padding: 15px; background: #eceff1; border-bottom: 2px solid #ccc; }
+        .stat-box { background: white; padding: 10px 20px; border-radius: 4px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); flex: 1; text-align: center; }
+        .stat-val { font-size: 20px; font-weight: bold; color: #333; }
+        .stat-label { font-size: 11px; color: #666; text-transform: uppercase; }
+        
+        .scan-area { padding: 20px; text-align: center; background: #fff3e0; border-bottom: 1px solid #ffe0b2; }
+        #auditInput { padding: 10px; width: 400px; font-size: 18px; border: 2px solid #ff9800; border-radius: 4px; text-align: center; }
+
+        /* Status Colors */
+        .status-match { color: green; font-weight: bold; }
+        .status-missing { color: red; font-weight: bold; background: #ffebee; }
+        .status-extra { color: blue; font-weight: bold; background: #e3f2fd; }
+
+        /* Button Group */
+        .btn-group { display: flex; gap: 10px; }
+    </style>
+<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script></head>
+<body>
+ <div class="main-menu">
+        <div class="menu-item">
+            <i class="fas fa-box"></i> PRODUCTS <i class="fas fa-caret-down" style="font-size:10px; margin-left:3px;"></i>
+            <div class="dropdown-content">
+                <a href="products.html">Add New Product</a>
+                <a href="products.html">Product List</a>
+                <a href="products.html">Frame</a>
+                <a href="products.html">Sunglasses</a>
+                <a href="products.html">Lens</a>
+                <a href="products.html">Contact Lens</a>
+                <a href="products.html">Solution</a>
+                <a href="products.html">Other</a>
+                <a href="products.html">Non-Chargeable</a>
+            </div>
+        </div>
+
+        <div class="menu-item">
+            <i class="fas fa-clipboard-list"></i> INVENTORY <i class="fas fa-caret-down" style="font-size:10px; margin-left:3px;"></i>
+            <div class="dropdown-content">
+                <a href="inventory.html">Inventory Levels</a>
+                <a href="inventory.html">Transfer Stock</a>
+                <a href="inventory.html">Transfer Using Barcode</a>
+                <a href="inventory.html">Transfer History</a>
+                <a href="audit.html" style="color:rgb(243, 243, 237); font-weight:bold;">Inventory Audit</a> 
+                <a href="inventory.html">Stock Movement</a>
+                <a href="barcode.html">Track Barcode</a>
+            </div>
+        </div>
+        
+        <div class="menu-item">
+            <i class="fas fa-shopping-cart"></i> SALES <i class="fas fa-caret-down" style="font-size:10px; margin-left:3px;"></i>
+            <div class="dropdown-content">
+                <a href="order.html">Create New Order</a>
+                <a href="sales_history.html?view=pending">Pending Orders</a>
+                <a href="sales_history.html?view=history">Sales History</a>
+                <a href="sales_history.html?view=return">Sales Return</a>
+                <a href="sales_history.html?view=statement">Daily Statement PDF</a>
+                <a href="invoice.html">Create Bulk Invoice</a>
+            </div>
+        </div>
+
+        <div class="menu-item">
+            <i class="fas fa-users"></i> CUSTOMER <i class="fas fa-caret-down" style="font-size:10px; margin-left:3px;"></i>
+             <div class="dropdown-content">
+                <a href="customer.html">Add Customer</a>
+                <a href="customer.html">Customer List</a>
+                <a href="customer.html">DND Customers</a>
+                <a href="customer.html">Customer Label</a>
+                <a href="customer.html">Birthday List</a>
+            </div>
+        </div>
+
+        <a href="reports.html" class="menu-item"><i class="fas fa-chart-bar"></i> REPORTS</a>
+
+        <div class="menu-item">
+            <i class="fas fa-sms"></i> SMS <i class="fas fa-caret-down" style="font-size:10px; margin-left:3px;"></i>
+             <div class="dropdown-content">
+                <a href="sms.html">Send Bulk SMS</a>
+                <a href="sms.html">SMS Account History</a>
+                <a href="sms.html">SMS Purchase History</a>
+                <a href="sms.html">Feedback SMS/WhatsApp</a>
+                <a href="sms.html">Sender ID's</a>
+            </div>
+        </div>
+
+        <div class="menu-item">
+            <i class="fas fa-file-medical"></i> PRESCRIPTION <i class="fas fa-caret-down" style="font-size:10px; margin-left:3px;"></i>
+            <div class="dropdown-content">
+                <a href="prescription.html">Add Prescription</a>
+                <a href="prescription.html">Prescription Database</a>
+                <a href="prescription.html">Patient Details</a>
+                <a href="prescription.html">Appointments</a>
+            </div>
+        </div>
+
+        <div class="menu-item">
+            <i class="fas fa-lock"></i> ACCOUNT <i class="fas fa-caret-down" style="font-size:10px; margin-left:3px;"></i>
+            <div class="dropdown-content" style="min-width:240px; right:0; left:auto;">
+                <a href="expense.html">Expenses</a>
+                <a href="accounts.html">Ledgers</a>
+                <a href="accounts.html">Group Ledgers</a>
+                <a href="accounts.html">Vouchers</a>
+                <a href="accounts.html">Account Payable</a>
+                <a href="accounts.html">Account Receivable</a>
+                <a href="accounts.html">Account Statement</a>
+                <a href="accounts.html">Trading, P/L Statement</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="billing-container" id="reportContent">
+        
+        <div class="audit-header">
+            <div>
+                <h2 style="margin:0;">Stock Audit Session</h2>
+                <small>Scan items to verify physical stock against system records.</small>
+            </div>
+            
+            <div class="btn-group" data-html2canvas-ignore="true"> 
+                <button onclick="exportToExcel()" class="btn" style="background:#2e7d32;"><i class="fas fa-file-excel"></i> Excel</button>
+                <button onclick="exportToPDF()" class="btn" style="background:#d32f2f;"><i class="fas fa-file-pdf"></i> PDF</button>
+                <button onclick="window.print()" class="btn" style="background:#0288d1;"><i class="fas fa-print"></i> Print</button>
+            </div>
+        </div>
+
+        <div class="audit-stats">
+            <div class="stat-box">
+                <div class="stat-val" id="sysCount">0</div>
+                <div class="stat-label">System Qty</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-val" id="scanCount" style="color:blue">0</div>
+                <div class="stat-label">Physical Scanned</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-val" id="varCount" style="color:red">0</div>
+                <div class="stat-label">Variance (Diff)</div>
+            </div>
+        </div>
+
+        <div class="scan-area" data-html2canvas-ignore="true">
+            <label style="font-weight:bold; font-size:14px; margin-right:10px;">SCAN BARCODE :</label>
+            <input type="text" id="auditInput" placeholder="Click here & scan..." onchange="handleScan(this)" autofocus>
+            <div style="margin-top:5px; font-size:12px; color:#666;">(Press Enter after typing code if no scanner is connected)</div>
+        </div>
+
+        <div class="product-table-container">
+            <table id="auditTable">
+                <thead>
+                    <tr>
+                        <th>Barcode</th>
+                        <th>Product Name</th>
+                        <th>System Qty</th>
+                        <th>Scanned Qty</th>
+                        <th>Variance</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody id="auditTableBody">
+                    </tbody>
+            </table>
+        </div>
+
+    </div>
+
+    <script src="script.js"></script>
+    <script>
+        document.addEventListener("DOMContentLoaded", initAudit);
+    </script>
+</body>
+</html>
+

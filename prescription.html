@@ -1,0 +1,303 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Prescription Management</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        /* WRAPPER */
+        .rx-wrapper { background: #f9fbe7; padding: 20px; border: 1px solid #c5e1a5; min-height: 85vh; font-family: 'Segoe UI', sans-serif; }
+        
+        /* TOP SWITCHER */
+        .mode-switch { display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 2px solid #ccc; padding-bottom: 10px; }
+        .mode-btn { padding: 8px 20px; border: none; cursor: pointer; font-weight: bold; background: #eee; border-radius: 4px; }
+        .mode-btn.active { background: #333; color: white; }
+
+        /* TABS STYLE */
+        .rx-tabs { display: flex; gap: 5px; margin-bottom: 20px; border-bottom: 2px solid #ddd; }
+        .rx-tab {
+            padding: 10px 25px; cursor: pointer; font-weight: bold; background: #eee; color: #555;
+            border: 1px solid #ccc; border-bottom: none; border-radius: 4px 4px 0 0;
+        }
+        .rx-tab.active { background: white; color: #333; border-top: 3px solid #ff9800; border-bottom: 2px solid white; margin-bottom: -2px; }
+
+        /* GRID INPUTS */
+        .rx-grid-container { display: flex; gap: 30px; }
+        .eye-section { flex: 1; }
+        .eye-title { font-weight: bold; font-size: 14px; margin-bottom: 10px; display: flex; align-items: center; gap: 5px; border-bottom: 2px solid #ddd; padding-bottom: 5px; }
+        .text-orange { color: #e65100; } .text-blue { color: #1565c0; }
+
+        /* THE TABLE */
+        .rx-table { width: 100%; border-collapse: separate; border-spacing: 5px; }
+        .rx-table th { font-size: 11px; color: #666; text-align: center; font-weight: bold; }
+        .rx-table td { text-align: center; }
+        .rx-label { text-align: left; font-size: 12px; font-weight: bold; color: #444; width: 120px; }
+        .rx-input { width: 100%; padding: 8px; text-align: center; border: 1px solid #ccc; border-radius: 4px; font-weight: bold; color: #333; }
+        .rx-input:focus { border-color: #ff9800; outline: none; background: #fff3e0; }
+
+        /* DATABASE TABLE STYLE */
+        .db-table { width: 100%; border-collapse: collapse; background: white; font-size: 12px; margin-top: 10px; }
+        .db-table th { background: #455a64; color: white; padding: 10px; text-align: left; }
+        .db-table td { border: 1px solid #cfd8dc; padding: 10px; vertical-align: top; }
+        .badge { padding: 3px 8px; border-radius: 3px; font-size: 10px; font-weight: bold; }
+    </style>
+<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script></head>
+<body>
+    <div class="top-bar">
+    <div class="nav-icons">
+        <div class="nav-icon bg-black" style="width:60px"><i class="fas fa-glasses"></i></div>
+        <a href="home.html"><div class="nav-icon bg-green"><i class="fas fa-home"></i></div></a>
+        <a href="dashboard.html"><div class="nav-icon bg-orange"><i class="fas fa-tachometer-alt"></i></div></a>
+        <div class="nav-icon bg-blue"><i class="fas fa-search"></i></div>
+        <div class="nav-icon bg-yellow"><i class="fas fa-th"></i></div>
+        <div class="nav-icon bg-purple"><i class="fas fa-cog"></i></div>
+        <div class="nav-icon bg-red"><i class="fas fa-user"></i></div>
+    </div>
+    <div class="user-info">
+    <strong>Welcome, Admin</strong><br>
+    <span id="liveClock">Online</span>
+    <div style="margin-top:5px;">
+        <a href="#" onclick="performLogout()" style="color:#ff9800; font-weight:bold; text-decoration:none; font-size:11px;">
+            <i class="fas fa-sign-out-alt"></i> Logout
+        </a>
+    </div>
+</div>
+</div>
+
+    <div class="main-menu">
+        <div class="menu-item">
+            <i class="fas fa-box"></i> PRODUCTS <i class="fas fa-caret-down" style="font-size:10px; margin-left:3px;"></i>
+            <div class="dropdown-content">
+                <a href="products.html">Add New Product</a>
+                <a href="products.html">Product List</a>
+                <a href="products.html">Frame</a>
+                <a href="products.html">Sunglasses</a>
+                <a href="products.html">Lens</a>
+                <a href="products.html">Contact Lens</a>
+                <a href="products.html">Solution</a>
+                <a href="products.html">Other</a>
+                <a href="products.html">Non-Chargeable</a>
+            </div>
+        </div>
+
+        <div class="menu-item">
+            <i class="fas fa-clipboard-list"></i> INVENTORY <i class="fas fa-caret-down" style="font-size:10px; margin-left:3px;"></i>
+            <div class="dropdown-content">
+                <a href="inventory.html">Inventory Levels</a>
+                <a href="inventory.html">Transfer Stock</a>
+                <a href="inventory.html">Transfer Using Barcode</a>
+                <a href="inventory.html">Transfer History</a>
+                <a href="audit.html" style="color:rgb(243, 243, 237); font-weight:bold;">Inventory Audit</a> 
+                <a href="inventory.html">Stock Movement</a>
+                <a href="barcode.html">Track Barcode</a>
+            </div>
+        </div>
+        
+        <div class="menu-item">
+            <i class="fas fa-shopping-cart"></i> SALES <i class="fas fa-caret-down" style="font-size:10px; margin-left:3px;"></i>
+            <div class="dropdown-content">
+                <a href="order.html">Create New Order</a>
+                <a href="sales_history.html?view=pending">Pending Orders</a>
+                <a href="sales_history.html?view=history">Sales History</a>
+                <a href="sales_history.html?view=return">Sales Return</a>
+                <a href="sales_history.html?view=statement">Daily Statement PDF</a>
+                <a href="invoice.html">Create Bulk Invoice</a>
+            </div>
+        </div>
+
+        <div class="menu-item">
+            <i class="fas fa-users"></i> CUSTOMER <i class="fas fa-caret-down" style="font-size:10px; margin-left:3px;"></i>
+             <div class="dropdown-content">
+                <a href="customer.html">Add Customer</a>
+                <a href="customer.html">Customer List</a>
+                <a href="customer.html">DND Customers</a>
+                <a href="customer.html">Customer Label</a>
+                <a href="customer.html">Birthday List</a>
+            </div>
+        </div>
+
+        <a href="reports.html" class="menu-item"><i class="fas fa-chart-bar"></i> REPORTS</a>
+
+        <div class="menu-item">
+            <i class="fas fa-sms"></i> SMS <i class="fas fa-caret-down" style="font-size:10px; margin-left:3px;"></i>
+             <div class="dropdown-content">
+                <a href="sms.html">Send Bulk SMS</a>
+                <a href="sms.html">SMS Account History</a>
+                <a href="sms.html">SMS Purchase History</a>
+                <a href="sms.html">Feedback SMS/WhatsApp</a>
+                <a href="sms.html">Sender ID's</a>
+            </div>
+        </div>
+
+        <div class="menu-item">
+            <i class="fas fa-file-medical"></i> PRESCRIPTION <i class="fas fa-caret-down" style="font-size:10px; margin-left:3px;"></i>
+            <div class="dropdown-content">
+                <a href="prescription.html">Add Prescription</a>
+                <a href="prescription.html">Prescription Database</a>
+                <a href="prescription.html">Patient Details</a>
+                <a href="prescription.html">Appointments</a>
+            </div>
+        </div>
+
+        <div class="menu-item">
+            <i class="fas fa-lock"></i> ACCOUNT <i class="fas fa-caret-down" style="font-size:10px; margin-left:3px;"></i>
+            <div class="dropdown-content" style="min-width:240px; right:0; left:auto;">
+                <a href="expense.html">Expenses</a>
+                <a href="accounts.html">Ledgers</a>
+                <a href="accounts.html">Group Ledgers</a>
+                <a href="accounts.html">Vouchers</a>
+                <a href="accounts.html">Account Payable</a>
+                <a href="accounts.html">Account Receivable</a>
+                <a href="accounts.html">Account Statement</a>
+                <a href="accounts.html">Trading, P/L Statement</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="billing-container">
+        
+        <div class="mode-switch">
+            <button class="mode-btn active" onclick="switchMode('entry')" id="btnEntry">Add New Prescription</button>
+            <button class="mode-btn" onclick="switchMode('database')" id="btnDb">Prescription Database</button>
+        </div>
+
+        <div id="entrySection">
+            <div style="background:white; padding:15px; border:1px solid #ccc; margin-bottom:15px; display:flex; gap:15px; align-items:center;">
+                <input type="text" id="patName" placeholder="Patient Name" style="padding:8px; width:250px; border:1px solid #ccc;">
+                <input type="text" id="patMobile" placeholder="Mobile Number" style="padding:8px; width:150px; border:1px solid #ccc;">
+                <input type="number" id="patAge" placeholder="Age" style="padding:8px; width:60px; border:1px solid #ccc;">
+                <input type="date" id="rxDate" style="padding:8px; border:1px solid #ccc;">
+            </div>
+
+            <div class="rx-tabs">
+                <div class="rx-tab active" onclick="switchRxTab('eyewear')">Eyewear Prescription</div>
+                <div class="rx-tab" onclick="switchRxTab('cl')">Contact Lens Prescription</div>
+            </div>
+
+            <div id="eyewear" class="rx-content">
+                <div class="rx-wrapper">
+                    <div class="rx-grid-container">
+                        <div class="eye-section">
+                            <div class="eye-title text-orange"><i class="far fa-eye"></i> RIGHT EYE (OD)</div>
+                            <table class="rx-table">
+                                <thead><tr><th></th> <th>SPH</th> <th>CYL</th> <th>AXIS</th> <th>VA</th></tr></thead>
+                                <tbody>
+                                    <tr><td class="rx-label">Distance (DV)</td><td><input id="r_sph" class="rx-input"></td><td><input id="r_cyl" class="rx-input"></td><td><input id="r_axis" class="rx-input"></td><td><input id="r_va" class="rx-input"></td></tr>
+                                    <tr><td class="rx-label">Near (NV)</td><td><input id="r_nv_sph" class="rx-input"></td><td><input id="r_nv_cyl" class="rx-input"></td><td><input id="r_nv_axis" class="rx-input"></td><td><input id="r_nv_va" class="rx-input"></td></tr>
+                                    <tr><td class="rx-label">Addition</td><td><input id="r_add" class="rx-input" placeholder=""></td><td colspan="3"></td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="eye-section">
+                            <div class="eye-title text-orange"><i class="far fa-eye"></i> LEFT EYE (OS)</div>
+                            <table class="rx-table">
+                                <thead><tr><th></th> <th>SPH</th> <th>CYL</th> <th>AXIS</th> <th>VA</th></tr></thead>
+                                <tbody>
+                                    <tr><td class="rx-label">Distance (DV)</td><td><input id="l_sph" class="rx-input"></td><td><input id="l_cyl" class="rx-input"></td><td><input id="l_axis" class="rx-input"></td><td><input id="l_va" class="rx-input"></td></tr>
+                                    <tr><td class="rx-label">Near (NV)</td><td><input id="l_nv_sph" class="rx-input"></td><td><input id="l_nv_cyl" class="rx-input"></td><td><input id="l_nv_axis" class="rx-input"></td><td><input id="l_nv_va" class="rx-input"></td></tr>
+                                    <tr><td class="rx-label">Addition</td><td><input id="l_add" class="rx-input" placeholder=""></td><td colspan="3"></td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div style="margin-top:20px; text-align:right;">
+                        <button class="btn btn-blue" onclick="saveFinalRx()" style="padding:10px 30px; font-size:14px;">Save Prescription</button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="cl" class="rx-content" style="display:none;">
+                <div class="rx-wrapper">
+                    <div class="rx-grid-container">
+                        <div class="eye-section">
+                            <div class="eye-title text-blue">RIGHT CL (OD)</div>
+                            <table class="rx-table">
+                                <tr><td>SPH</td><td><input id="cl_r_sph" class="rx-input"></td></tr>
+                                <tr><td>CYL</td><td><input id="cl_r_cyl" class="rx-input"></td></tr>
+                                <tr><td>AXIS</td><td><input id="cl_r_axis" class="rx-input"></td></tr>
+                            </table>
+                        </div>
+                        <div class="eye-section">
+                            <div class="eye-title text-blue">LEFT CL (OS)</div>
+                            <table class="rx-table">
+                                <tr><td>SPH</td><td><input id="cl_l_sph" class="rx-input"></td></tr>
+                                <tr><td>CYL</td><td><input id="cl_l_cyl" class="rx-input"></td></tr>
+                                <tr><td>AXIS</td><td><input id="cl_l_axis" class="rx-input"></td></tr>
+                            </table>
+                        </div>
+                    </div>
+                    <div style="margin-top:20px; text-align:right;">
+                        <button class="btn btn-blue" onclick="saveFinalRx()" style="padding:10px 30px;">Save Prescription</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="databaseSection" style="display:none;">
+            <div style="background:white; padding:15px; border-bottom:2px solid #333;">
+                <input type="text" id="dbSearch" placeholder="Search Patient Name..." style="padding:8px; width:300px;">
+                <button onclick="loadRxDatabase()" style="padding:8px 15px; background:#333; color:white; border:none;">Search</button>
+            </div>
+            
+            <table class="db-table">
+                <thead>
+                    <tr>
+                        <th style="width:120px;">Date</th>
+                        <th style="width:200px;">Patient Details</th>
+                        <th>Right Eye (SPH / CYL / AXIS)</th>
+                        <th>Left Eye (SPH / CYL / AXIS)</th>
+                        <th style="width:80px;">Action</th>
+                    </tr>
+                </thead>
+                <tbody id="rxDatabaseBody">
+                    </tbody>
+            </table>
+        </div>
+
+    </div>
+
+    <script src="script.js"></script>
+    <script>
+        // Initialize prescription page
+        document.addEventListener('DOMContentLoaded', () => {
+            initPrescriptionDate();
+            loadRxDatabase();
+        });
+
+        function switchMode(mode) {
+            document.getElementById('entrySection').style.display = mode === 'entry' ? 'block' : 'none';
+            document.getElementById('databaseSection').style.display = mode === 'database' ? 'block' : 'none';
+            
+            document.getElementById('btnEntry').className = mode === 'entry' ? 'mode-btn active' : 'mode-btn';
+            document.getElementById('btnDb').className = mode === 'database' ? 'mode-btn active' : 'mode-btn';
+
+            if(mode === 'database') loadRxDatabase();
+        }
+
+        function switchRxTab(id) {
+            document.querySelectorAll('.rx-content').forEach(d => d.style.display='none');
+            document.querySelectorAll('.rx-tab').forEach(b => b.classList.remove('active'));
+            document.getElementById(id).style.display='block';
+            event.target.classList.add('active');
+        }
+
+        // Show last 10 added items
+        products.slice(-10).reverse().forEach(p => {
+            tbody.insertAdjacentHTML('beforeend', `
+                <tr>
+                    <td>${p.category}</td>
+                    <td>${p.name}</td>
+                    <td>${p.qty}</td>
+                    <td>${p.sellPrice}</td>
+                    <td>${p.code}</td>
+                    <td><button style="color:red; border:none; background:none; cursor:pointer">Delete</button></td>
+                </tr>
+            `);
+        });
+    </script>
+</body>
+</html>
+
+

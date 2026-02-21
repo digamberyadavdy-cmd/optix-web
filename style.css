@@ -1,0 +1,265 @@
+/* style.css - Professional Optical Theme */
+:root {
+    --app-bg: #f0fdf4;       /* Light Green Background */
+    --header-bg: #2d2d2d;
+    --primary: #2563eb;
+    --border: #bfdbfe;
+    --input-border: #ced4da;
+}
+
+body {
+    font-family: 'Segoe UI', sans-serif;
+    margin: 0;
+    padding: 0;
+    background-color: var(--app-bg);
+    font-size: 13px; /* Compact font for high density */
+}
+
+/* Header */
+.top-header {
+    background: #333;
+    color: white;
+    padding: 8px 15px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+/* Main Container */
+.billing-container {
+    padding: 10px;
+    max-width: 100%;
+}
+
+/* Section 1: Customer Info Box */
+.cust-info-box {
+    background: #dcfce7; /* Green tint */
+    border: 1px solid #86efac;
+    padding: 15px;
+    border-radius: 4px;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr); /* 4 Columns */
+    gap: 10px;
+    margin-bottom: 15px;
+}
+
+.form-group { display: flex; flex-direction: column; }
+.form-group label { margin-bottom: 3px; font-weight: 600; color: #374151; font-size: 11px; }
+.form-group input, .form-group select, .form-group textarea {
+    padding: 5px;
+    border: 1px solid #aaa;
+    border-radius: 3px;
+    font-size: 12px;
+}
+.full-width { grid-column: span 4; } /* Notes takes full width */
+
+/* Section 2: Product Table */
+.product-table-container {
+    overflow-x: auto;
+    background: white;
+    border: 1px solid #ccc;
+    margin-bottom: 15px;
+}
+
+table { width: 100%; border-collapse: collapse; min-width: 1000px; }
+th {
+    background: #374151;
+    color: white;
+    padding: 6px;
+    text-align: left;
+    font-size: 11px;
+    border-right: 1px solid #555;
+}
+td { border: 1px solid #ddd; padding: 2px; }
+td input, td select {
+    width: 100%;
+    border: none;
+    padding: 5px;
+    box-sizing: border-box;
+    outline: none;
+    font-size: 12px;
+}
+tr:nth-child(even) { background-color: #f9fafb; }
+
+/* Section 3: Bottom Totals */
+.bottom-section {
+    display: flex;
+    justify-content: space-between;
+    background: #dcfce7;
+    padding: 20px;
+    border: 1px solid #86efac;
+}
+
+.big-pending {
+    font-size: 24px;
+    font-weight: bold;
+    color: #166534;
+    padding-top: 20px;
+}
+
+.totals-grid {
+    display: grid;
+    grid-template-columns: 140px 150px;
+    gap: 5px;
+    align-items: center;
+}
+.totals-grid label { text-align: right; font-weight: bold; font-size: 12px; padding-right: 10px; }
+.totals-grid input { text-align: right; font-weight: bold; }
+
+/* Buttons */
+.action-buttons {
+    text-align: right;
+    margin-top: 15px;
+    padding-bottom: 20px;
+}
+.btn {
+    padding: 10px 20px;
+    border: none;
+    color: white;
+    cursor: pointer;
+    font-weight: bold;
+    border-radius: 4px;
+    margin-left: 10px;
+}
+.btn-blue { background: #2563eb; }
+.btn-green { background: #16a34a; }
+/* Add to style.css */
+.totals-grid-advanced {
+    display: grid;
+    grid-template-columns: 140px 180px; /* Wider labels */
+    gap: 8px;
+    align-items: center;
+}
+.totals-grid-advanced label {
+    text-align: right;
+    font-size: 11px;
+    font-weight: bold;
+    color: #444;
+}
+.totals-grid-advanced input {
+    text-align: right;
+    font-weight: bold;
+    padding: 4px;
+}
+.btn-small {
+    background: #eee;
+    border: 1px solid #ccc;
+    cursor: pointer;
+    margin: 5px;
+    padding: 5px 10px;
+}
+/* --- GLOBAL NAVIGATION STYLES (Add to style.css) --- */
+
+/* 1. Top Bar & Colorful Icons */
+.top-bar {
+    background: #222;
+    height: 45px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    color: white;
+    padding: 0;
+}
+.nav-icons { display: flex; height: 100%; }
+.nav-icon {
+    width: 50px;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    cursor: pointer;
+    transition: opacity 0.2s;
+    color: white;
+}
+.nav-icon:hover { opacity: 0.8; }
+
+/* Icon Background Colors */
+.bg-black { background: #000; }
+.bg-green { background: #8bc34a; }
+.bg-blue { background: #03a9f4; }
+.bg-orange { background: #ff9800; }
+.bg-purple { background: #9c27b0; }
+.bg-red { background: #f44336; }
+.bg-yellow { background: #ffeb3b; color: black; }
+
+.user-info { padding-right: 20px; text-align: right; font-size: 11px; color: white; }
+
+/* 2. Main Dropdown Menu */
+.main-menu {
+    background: white;
+    border-bottom: 1px solid #ccc;
+    padding: 0 15px; 
+    display: flex;
+    gap: 25px;
+    font-weight: 600;
+    color: #444;
+    font-size: 12px;
+    height: 40px; 
+    align-items: center;
+    overflow: visible; 
+    position: relative;
+    z-index: 1000; /* High z-index to sit on top of other elements */
+}
+
+.menu-item { 
+    display: flex; 
+    align-items: center; 
+    gap: 6px; 
+    cursor: pointer; 
+    height: 100%; 
+    position: relative;
+    padding: 0 5px;
+}
+.menu-item:hover { color: #0288d1; }
+
+/* Dropdown Content */
+.dropdown-content {
+    display: none;
+    position: absolute;
+    background-color: #444; 
+    min-width: 210px;
+    box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
+    z-index: 999;
+    top: 40px;
+    left: 0;
+    text-align: left;
+}
+.dropdown-content a {
+    color: white;
+    padding: 10px 15px;
+    text-decoration: none;
+    display: block;
+    font-size: 12px;
+    border-bottom: 1px solid #555;
+    font-weight: normal;
+}
+.dropdown-content a:hover { background-color: #03a9f4; }
+.menu-item:hover .dropdown-content { display: block; }
+/* Google-Like Search Dropdown */
+.google-suggestions {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: white;
+    border: 1px solid #0288d1;
+    border-top: none;
+    z-index: 10000; /* Increased to stay above modals */
+    max-height: 200px;
+    overflow-y: auto;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+    display: none;
+    border-radius: 0 0 4px 4px;
+}
+
+.suggestion-item {
+    padding: 8px 10px;
+    cursor: pointer;
+    border-bottom: 1px solid #eee;
+    font-size: 12px;
+    color: #333;
+}
+.suggestion-item:hover { background-color: #e1f5fe; color: #01579b; }
+
+.suggestion-item.active { background-color: #e1f5fe; color: #01579b; }

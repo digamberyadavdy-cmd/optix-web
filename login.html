@@ -1,0 +1,86 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - OptixCrafter</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        body {
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0;
+            font-family: 'Segoe UI', sans-serif;
+        }
+        .login-card {
+            background: white;
+            padding: 40px;
+            border-radius: 10px;
+            box-shadow: 0 15px 35px rgba(0,0,0,0.2);
+            width: 100%;
+            max-width: 400px;
+            text-align: center;
+        }
+        .logo-area i { font-size: 50px; color: #2563eb; margin-bottom: 10px; }
+        .logo-area h2 { margin: 10px 0 30px 0; color: #333; font-size: 24px; }
+        
+        .input-group { position: relative; margin-bottom: 20px; text-align: left; }
+        .input-group i { position: absolute; top: 13px; left: 15px; color: #777; }
+        .input-group input {
+            width: 100%; padding: 12px 12px 12px 40px; border: 1px solid #ddd;
+            border-radius: 5px; font-size: 15px; box-sizing: border-box; transition: 0.3s;
+        }
+        .input-group input:focus { border-color: #2563eb; outline: none; box-shadow: 0 0 0 3px rgba(37,99,235,0.1); }
+
+        .btn-login {
+            width: 100%; padding: 12px; background: #2563eb; color: white; border: none;
+            border-radius: 5px; font-size: 16px; font-weight: bold; cursor: pointer; transition: 0.3s;
+        }
+        .btn-login:hover { background: #1d4ed8; }
+
+        .error-msg { color: red; font-size: 13px; margin-top: 15px; display: none; }
+        .footer-link { margin-top: 20px; font-size: 12px; color: #888; }
+    </style>
+<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script></head>
+<body>
+
+    <div class="login-card">
+        <div class="logo-area">
+            <i class="fas fa-glasses"></i>
+            <h2>OptixCrafter CRM</h2>
+        </div>
+
+        <div class="input-group">
+            <i class="fas fa-user"></i>
+            <input type="text" id="loginUser" placeholder="Username">
+        </div>
+
+        <div class="input-group">
+            <i class="fas fa-lock"></i>
+            <input type="password" id="loginPass" placeholder="Password">
+        </div>
+
+        <button class="btn-login" onclick="performLogin()">SECURE LOGIN</button>
+        <div id="loginError" class="error-msg">âŒ Invalid Username or Password</div>
+
+        <div class="footer-link">
+            &copy; 2026 OptixCrafter Systems<br>
+            <a href="track_order.html" style="color:#2563eb; text-decoration:none;">Customer Tracking Page</a>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+    <script>
+        // Check if already logged in, redirect to dashboard
+        if(localStorage.getItem('optixLoggedIn') === 'true') {
+            window.location.href = 'dashboard.html';
+        }
+    </script>
+</body>
+</html>
+

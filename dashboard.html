@@ -1,0 +1,515 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Optical Dashboard Pro</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        /* --- CORE STYLES --- */
+        :root {
+            --header-dark: #333;
+            --panel-header: #555;
+            --bg-body: #f4f4f4;
+            --text-main: #333;
+        }
+        body { margin: 0; font-family: 'Segoe UI', Tahoma, sans-serif; background: var(--bg-body); font-size: 13px; }
+        a { text-decoration: none; color: inherit; }
+
+        /* --- 1. TOP HEADER --- */
+        .top-bar {
+            background: #222;
+            height: 45px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            color: white;
+            padding: 0;
+        }
+        .nav-icons { display: flex; height: 100%; }
+        
+        .nav-icon {
+            width: 50px;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            cursor: pointer;
+            transition: opacity 0.2s;
+            color: white;
+        }
+        .nav-icon:hover { opacity: 0.8; }
+        
+        /* Colors */
+        .bg-black { background: #000; }
+        .bg-green { background: #8bc34a; }
+        .bg-blue { background: #03a9f4; }
+        .bg-orange { background: #ff9800; }
+        .bg-purple { background: #9c27b0; }
+        .bg-red { background: #f44336; }
+        .bg-yellow { background: #ffeb3b; color: black; }
+
+        .user-info { padding-right: 20px; text-align: right; font-size: 11px; }
+
+        /* --- 2. MAIN MENU (UPDATED FOR DROPDOWN) --- */
+        .main-menu {
+            background: white;
+            border-bottom: 1px solid #ccc;
+            padding: 0 15px; 
+            display: flex;
+            gap: 25px;
+            font-weight: 600;
+            color: #444;
+            font-size: 12px;
+            height: 40px; 
+            align-items: center;
+            overflow: visible; 
+            position: relative;
+            z-index: 100;
+        }
+        
+        .menu-item { 
+            display: flex; 
+            align-items: center; 
+            gap: 6px; 
+            cursor: pointer; 
+            height: 100%; 
+            position: relative;
+            padding: 0 5px;
+        }
+        .menu-item:hover { color: #0288d1; }
+
+        /* --- DROPDOWN CSS --- */
+        .dropdown-content {
+            display: none;
+            position: absolute;
+            background-color: #444; /* Darker background for visibility */
+            min-width: 210px;
+            box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
+            z-index: 999;
+            top: 40px;
+            left: 0;
+            text-align: left;
+        }
+
+        .dropdown-content a {
+            color: white;
+            padding: 10px 15px;
+            text-decoration: none;
+            display: block;
+            font-size: 12px;
+            border-bottom: 1px solid #555;
+            font-weight: normal;
+        }
+
+        .dropdown-content a:hover {
+            background-color: #03a9f4;
+        }
+
+        /* Show Dropdown on Hover */
+        .menu-item:hover .dropdown-content {
+            display: block;
+        }
+
+        /* --- 3. DASHBOARD CONTENT --- */
+        .container { padding: 15px; max-width: 1400px; margin: 0 auto; }
+        
+        .branch-select {
+            width: 100%;
+            padding: 10px;
+            background: #444;
+            color: white;
+            border: none;
+            margin-bottom: 15px;
+            border-radius: 3px;
+        }
+
+        /* GRID SYSTEM */
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .panel {
+            background: white;
+            border: 1px solid #ccc;
+            border-radius: 3px;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+        }
+        
+        .panel-head {
+            background: #555;
+            color: white;
+            padding: 8px 10px;
+            font-weight: bold;
+            text-transform: uppercase;
+            font-size: 11px;
+        }
+        
+        .panel-body { padding: 10px; font-size: 12px; line-height: 1.8; color: #333; height: 180px; overflow-y: auto; }
+        
+        .row { display: flex; justify-content: space-between; border-bottom: 1px dashed #eee; padding-bottom: 2px; margin-bottom: 2px; }
+        .green-text { color: green; font-weight: bold; }
+        .red-text { color: red; }
+
+        /* --- 4. ACTION ICONS GRID --- */
+        .action-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+            gap: 10px;
+        }
+
+        .action-card {
+            background: white;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            padding: 15px 5px;
+            text-align: center;
+            cursor: pointer;
+            transition: transform 0.2s;
+            box-shadow: 0 2px 3px rgba(0,0,0,0.1);
+            position: relative;
+        }
+        .action-card:hover { transform: translateY(-3px); border-color: #aaa; }
+
+        .icon-circle {
+            width: 45px;
+            height: 45px;
+            margin: 0 auto 8px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            position: relative;
+            background: white;
+        }
+        /* Borders */
+        .border-green { border: 2px solid #4caf50; color: #4caf50; }
+        .border-orange { border: 2px solid #ff9800; color: #ff9800; }
+        .border-blue { border: 2px solid #2196f3; color: #2196f3; }
+        .border-black { border: 2px solid #333; color: #333; }
+
+        .plus-badge {
+            position: absolute;
+            bottom: -5px; right: -5px;
+            background: #4caf50; color: white;
+            width: 18px; height: 18px;
+            border-radius: 50%; font-size: 12px;
+            display: flex; align-items: center; justify-content: center;
+            border: 2px solid white;
+        }
+
+        .card-label { font-size: 11px; color: #0277bd; font-weight: 600; line-height: 1.3; }
+        .footer { text-align: center; margin-top: 30px; font-size: 11px; color: #666; }
+    </style>
+<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script></head>
+<body>
+
+    <div class="top-bar">
+        <div class="nav-icons">
+            <div class="nav-icon bg-black"><i class="fas fa-glasses"></i></div>
+            
+            <a href="home.html" style="height:100%">
+                <div class="nav-icon bg-green"><i class="fas fa-home"></i></div>
+            </a>
+            
+            <a href="dashboard.html" style="height:100%">
+                <div class="nav-icon bg-orange"><i class="fas fa-tachometer-alt"></i></div>
+            </a>
+            
+            <div class="nav-icon bg-blue" onclick="openSearchModal()"><i class="fas fa-search"></i></div>
+            <div class="nav-icon bg-yellow"><i class="fas fa-th"></i></div>
+            <div class="nav-icon bg-purple"><i class="fas fa-cog"></i></div>
+            <div class="nav-icon bg-red"><i class="fas fa-user"></i></div>
+        </div>
+        <div class="user-info">
+    <strong>Welcome, Admin</strong><br>
+    <span id="liveClock">Online</span>
+    <div style="margin-top:5px;">
+        <a href="#" onclick="performLogout()" style="color:#ff9800; font-weight:bold; text-decoration:none; font-size:11px;">
+            <i class="fas fa-sign-out-alt"></i> Logout
+        </a>
+    </div>
+</div>
+    </div>
+
+    <div class="main-menu">
+        <div class="menu-item">
+            <i class="fas fa-box"></i> PRODUCTS <i class="fas fa-caret-down" style="font-size:10px; margin-left:3px;"></i>
+            <div class="dropdown-content">
+                <a href="products.html">Add New Product</a>
+                <a href="products.html">Product List</a>
+                <a href="products.html">Frame</a>
+                <a href="products.html">Sunglasses</a>
+                <a href="products.html">Lens</a>
+                <a href="products.html">Contact Lens</a>
+                <a href="products.html">Solution</a>
+                <a href="products.html">Other</a>
+                <a href="products.html">Non-Chargeable</a>
+            </div>
+        </div>
+
+        <div class="menu-item">
+            <i class="fas fa-clipboard-list"></i> INVENTORY <i class="fas fa-caret-down" style="font-size:10px; margin-left:3px;"></i>
+            <div class="dropdown-content">
+                <a href="inventory.html">Inventory Levels</a>
+                <a href="inventory.html">Transfer Stock</a>
+                <a href="inventory.html">Transfer Using Barcode</a>
+                <a href="inventory.html">Transfer History</a>
+                <a href="audit.html" style="color:rgb(243, 243, 237); font-weight:bold;">Inventory Audit</a> 
+                <a href="inventory.html">Stock Movement</a>
+                <a href="barcode.html">Track Barcode</a>
+            </div>
+        </div>
+        
+        <div class="menu-item">
+            <i class="fas fa-shopping-cart"></i> SALES <i class="fas fa-caret-down" style="font-size:10px; margin-left:3px;"></i>
+            <div class="dropdown-content">
+                <a href="order.html">Create New Order</a>
+                <a href="sales_history.html?view=pending">Pending Orders</a>
+                <a href="sales_history.html?view=history">Sales History</a>
+                <a href="sales_history.html?view=return">Sales Return</a>
+                <a href="sales_history.html?view=statement">Daily Statement PDF</a>
+                <a href="invoice.html">Create Bulk Invoice</a>
+            </div>
+        </div>
+
+        <div class="menu-item">
+            <i class="fas fa-users"></i> CUSTOMER <i class="fas fa-caret-down" style="font-size:10px; margin-left:3px;"></i>
+             <div class="dropdown-content">
+                <a href="customer.html">Add Customer</a>
+                <a href="customer.html">Customer List</a>
+                <a href="customer.html">DND Customers</a>
+                <a href="customer.html">Customer Label</a>
+                <a href="customer.html">Birthday List</a>
+            </div>
+        </div>
+
+        <a href="reports.html" class="menu-item"><i class="fas fa-chart-bar"></i> REPORTS</a>
+
+        <div class="menu-item">
+            <i class="fas fa-sms"></i> SMS <i class="fas fa-caret-down" style="font-size:10px; margin-left:3px;"></i>
+             <div class="dropdown-content">
+                <a href="sms.html">Send Bulk SMS</a>
+                <a href="sms.html">SMS Account History</a>
+                <a href="sms.html">SMS Purchase History</a>
+                <a href="sms.html">Feedback SMS/WhatsApp</a>
+                <a href="sms.html">Sender ID's</a>
+            </div>
+        </div>
+
+        <div class="menu-item">
+            <i class="fas fa-file-medical"></i> PRESCRIPTION <i class="fas fa-caret-down" style="font-size:10px; margin-left:3px;"></i>
+            <div class="dropdown-content">
+                <a href="prescription.html">Add Prescription</a>
+                <a href="prescription.html">Prescription Database</a>
+                <a href="prescription.html">Patient Details</a>
+                <a href="prescription.html">Appointments</a>
+            </div>
+        </div>
+
+        <div class="menu-item">
+            <i class="fas fa-lock"></i> ACCOUNT <i class="fas fa-caret-down" style="font-size:10px; margin-left:3px;"></i>
+            <div class="dropdown-content" style="min-width:240px; right:0; left:auto;">
+                <a href="expense.html">Expenses</a>
+                <a href="accounts.html">Ledgers</a>
+                <a href="accounts.html">Group Ledgers</a>
+                <a href="accounts.html">Vouchers</a>
+                <a href="accounts.html">Account Payable</a>
+                <a href="accounts.html">Account Receivable</a>
+                <a href="accounts.html">Account Statement</a>
+                <a href="accounts.html">Trading, P/L Statement</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <h2>Dashboard (3.0)</h2>
+        <select class="branch-select">
+            <option>Select Branch : Cleandekho.com</option>
+        </select>
+
+        <div class="info-grid">
+            <div class="panel">
+                <div class="panel-head">TRAINING / FEEDBACK</div>
+                <div class="panel-body">
+                    <p><strong>Customer Care</strong><br>Email: digamber.yadav.dy@gmail.com</p>
+                    <hr style="border:0; border-top:1px dashed #ccc;">
+                    <p>Youtube Channel:<br><span style="color:blue">www.youtube.com</span></p>
+                </div>
+            </div>
+            <div class="panel">
+                <div class="panel-head">PENDING TASK</div>
+                <div class="panel-body">
+                    <div class="row"><span>Pending Order Value:</span> <span class="red-text" id="dash-pending-val">Rs 0.00</span></div>
+                    <div class="row"><span>Pending Orders:</span> <span>Check List</span></div>
+                    <div class="row"><span>Edited Barcode Labels:</span> <span>0 Products</span></div>
+                    <div class="row"><span>Pending Balance:</span> <span>Rs 30,420.00</span></div>
+                    <div class="row"><span>Missing Purchase Count:</span> <span>4311</span></div>
+                </div>
+            </div>
+            <div class="panel">
+                <div class="panel-head">TODAYS DATA</div>
+                <div class="panel-body">
+                    <div class="row"><span>Today Sales:</span> <span class="green-text" id="dash-today-sales">Rs 0.00</span></div>
+                    <div class="row"><span>Balance Collection:</span> <span>Rs 0.00</span></div>
+                    <div class="row"><span>Expenses:</span> <span id="dash-expenses" style="color:red">Rs 0.00</span></div>
+                    <div class="row"><span>Eye Testings:</span> <span>1</span></div>
+                </div>
+            </div>
+            <div class="panel" style="border-top: 3px solid #e91e63;">
+                <div class="panel-head" style="background: #e91e63;">ðŸŽ‚ Upcoming Birthdays (7 Days)</div>
+                <div class="panel-body" id="birthday-list">
+                     <div style="padding:10px; text-align:center; color:#888;">No upcoming birthdays</div>
+                </div>
+            </div>
+            <div class="panel">
+                <div class="panel-head">THIS MONTH DATA</div>
+                <div class="panel-body">
+                    <div class="row"><span>Total Sales:</span> <span class="green-text" id="dash-total-sales">Rs 0.00</span></div>
+                    <div class="row"><span>Gross Sales:</span> <span>Rs 0.00</span></div>
+                    <div class="row"><span>Net Sales:</span> <span>Rs 0.00</span></div>
+                    <div class="row"><span>Number of Bills:</span> <span id="dash-bill-count" style="cursor:pointer; color:#03a9f4; font-weight:bold; text-decoration:underline;" onclick="showBillsModal()">0</span></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="action-grid">
+            <a href="order.html"><div class="action-card"><div class="icon-circle border-green"><i class="fas fa-calendar-plus"></i><div class="plus-badge">+</div></div><div class="card-label">Create New<br>Order</div></div></a>
+            <a href="purchase.html"><div class="action-card"><div class="icon-circle border-orange"><i class="fas fa-shopping-basket"></i><div class="plus-badge">+</div></div><div class="card-label">Add New<br>Purchase</div></div></a>
+            <a href="barcode.html"><div class="action-card"><div class="icon-circle border-black"><i class="fas fa-barcode"></i></div><div class="card-label">Print Barcode<br>Labels</div></div></a>
+            <a href="staff.html"><div class="action-card"><div class="icon-circle border-green"><i class="fas fa-users-cog"></i><div class="plus-badge">+</div></div><div class="card-label">Manage Staff<br>Users</div></div></a>
+            <a href="customer.html"><div class="action-card"><div class="icon-circle border-blue"><i class="fas fa-user-plus"></i><div class="plus-badge">+</div></div><div class="card-label">Add New<br>Customer</div></div></a>
+            <a href="sms.html"><div class="action-card"><div class="icon-circle border-orange"><i class="fas fa-envelope"></i></div><div class="card-label">Send Promotion<br>SMS</div></div></a>
+            <div class="action-card" onclick="downloadGSTReport()"><div class="icon-circle border-green"><i class="fas fa-file-invoice-dollar"></i></div><div class="card-label">Download GST<br>Report</div></div>
+            <a href="expense.html"><div class="action-card"><div class="icon-circle border-orange"><i class="fas fa-coins"></i><div class="plus-badge">+</div></div><div class="card-label">Add<br>Expenses</div></div></a>
+            <div class="action-card" onclick="backupData()"><div class="icon-circle border-blue"><i class="fas fa-download"></i></div><div class="card-label">Backup<br>Data</div></div>
+            <div class="action-card" onclick="document.getElementById('restoreFile').click()"><div class="icon-circle border-red"><i class="fas fa-upload"></i></div><div class="card-label">Restore<br>Data</div><input type="file" id="restoreFile" style="display:none" onchange="restoreData(this)"></div>
+        </div>
+
+        <div class="footer">
+            Copyright Â© 2025-26 Optix CRM. All rights reserved.
+        </div>
+    </div>
+
+    <div id="billsModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); z-index:9999; align-items:center; justify-content:center;">
+        <div style="background:white; padding:20px; width:600px; max-height:80vh; overflow-y:auto; border-radius:8px; box-shadow:0 4px 15px rgba(0,0,0,0.3); position:relative; animation: fadeIn 0.3s;">
+            <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #eee; padding-bottom:10px; margin-bottom:10px;">
+                <h3 style="margin:0; color:#333;">This Month's Bills</h3>
+                <span onclick="closeBillsModal()" style="font-size:24px; cursor:pointer; color:#666; font-weight:bold;">&times;</span>
+            </div>
+            <table style="width:100%; border-collapse:collapse; font-size:13px;">
+                <thead>
+                    <tr style="background:#f5f5f5; text-align:left; color:#555;">
+                        <th style="padding:10px; border-bottom:1px solid #ddd;">Date</th>
+                        <th style="padding:10px; border-bottom:1px solid #ddd;">Customer</th>
+                        <th style="padding:10px; border-bottom:1px solid #ddd;">Amount</th>
+                        <th style="padding:10px; border-bottom:1px solid #ddd;">Status</th>
+                    </tr>
+                </thead>
+                <tbody id="billsListBody"></tbody>
+            </table>
+            <div style="margin-top:20px; text-align:right;">
+                <button onclick="closeBillsModal()" style="padding:8px 20px; background:#444; color:white; border:none; border-radius:4px; cursor:pointer;">Close List</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Clock Script
+        setInterval(() => {
+            document.getElementById('liveClock').innerText = new Date().toLocaleString();
+        }, 1000);
+    </script>
+    <script src="script.js"></script>
+    <div id="searchCustomerModal" class="modal-overlay" style="display:none;">
+    <div class="search-modal-content">
+        <div class="search-header">
+            <span><i class="fas fa-times-circle"></i> SEARCH CUSTOMER INFORMATION</span>
+            <span class="close-btn" onclick="closeSearchModal()">Ã—</span>
+        </div>
+        <div class="search-body">
+            <div class="search-row">
+                <label>Customer Name :</label>
+                <div style="position:relative; width:100%;">
+                    <input type="text" id="searchName" oninput="suggestCustomer('name')" placeholder="Enter Name" autocomplete="off">
+                    <div id="suggestName" class="suggestion-box"></div>
+                </div>
+            </div>
+
+            <div class="search-row">
+                <label>Mobile Number :</label>
+                <div style="position:relative; width:100%;">
+                    <input type="text" id="searchPhone" oninput="suggestCustomer('phone')" placeholder="Enter Mobile" autocomplete="off">
+                    <div id="suggestPhone" class="suggestion-box"></div>
+                </div>
+            </div>
+
+            <button class="btn-search-action" onclick="performFullSearch()">Search <i class="fas fa-arrow-right"></i></button>
+        </div>
+        
+        <div id="searchResults" style="display:none; padding:15px; border-top:1px solid #eee; background:#f9f9f9; max-height:300px; overflow-y:auto;">
+        </div>
+    </div>
+</div>
+
+<style>
+    .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 10000; display: flex; justify-content: center; padding-top: 80px; }
+    .search-modal-content { background: white; width: 750px; border-radius: 4px; box-shadow: 0 5px 25px rgba(0,0,0,0.3); overflow: hidden; height: fit-content; border:1px solid #0288d1; }
+    .search-header { background: #039be5; color: white; padding: 10px 15px; font-weight: bold; font-size: 14px; display: flex; justify-content: space-between; align-items: center; }
+    .close-btn { cursor: pointer; font-size: 22px; font-weight: bold; line-height: 1; }
+    .search-body { padding: 20px; display: flex; align-items: center; gap: 15px; background: #fff; }
+    .search-row { display: flex; align-items: center; gap: 10px; flex: 1; }
+    .search-row label { white-space: nowrap; font-weight: 500; font-size: 13px; color: #333; }
+    .search-row input { width: 100%; padding: 6px; border: 1px solid #ccc; border-radius: 3px; font-size:13px; }
+    .btn-search-action { background: #0288d1; color: white; border: none; padding: 7px 20px; border-radius: 3px; cursor: pointer; font-size: 13px; font-weight: bold; white-space: nowrap; }
+    .btn-search-action:hover { background: #01579b; }
+
+    /* Auto-Suggestion Dropdown Styles */
+    .suggestion-box { position: absolute; top: 100%; left: 0; width: 100%; background: white; border: 1px solid #bbb; max-height: 200px; overflow-y: auto; z-index: 1001; display: none; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+    .suggestion-item { padding: 8px; cursor: pointer; border-bottom: 1px solid #eee; font-size: 12px; color:#333; }
+    .suggestion-item:hover { background: #e1f5fe; }
+    .suggestion-item strong { color: #0277bd; }
+
+    /* Professional Search Result Styles */
+    .cust-profile-header {
+        background: #e3f2fd; border-bottom: 2px solid #2196f3; padding: 15px;
+        display: flex; justify-content: space-between; align-items: center;
+    }
+    .cust-profile-header h2 { margin: 0; color: #1565c0; font-size: 18px; }
+    .balance-tag { font-size: 16px; font-weight: bold; color: #d32f2f; }
+    
+    .cust-info-bar {
+        background: #f5f5f5; padding: 10px 15px; font-size: 13px; color: #444;
+        border-bottom: 1px solid #ddd; display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;
+    }
+    
+    .section-title {
+        background: #333; color: white; padding: 5px 10px; font-size: 12px; font-weight: bold;
+        margin-top: 15px; text-transform: uppercase;
+    }
+
+    .data-table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 0; }
+    .data-table th { background: #546e7a; color: white; padding: 8px; text-align: left; border: 1px solid #607d8b; }
+    .data-table td { border: 1px solid #ddd; padding: 6px; color: #333; }
+    .data-table tr:nth-child(even) { background: #f9f9f9; }
+
+    /* Eyewear Grid */
+    .eye-grid { display: flex; width: 100%; border: 1px solid #ccc; font-size: 11px; }
+    .eye-box { flex: 1; border-right: 1px solid #ccc; padding: 0; }
+    .eye-box:last-child { border-right: none; }
+    .eye-header { background: #eee; text-align: center; font-weight: bold; padding: 4px; border-bottom: 1px solid #ccc; }
+    .eye-row { display: flex; border-bottom: 1px solid #eee; }
+    .eye-cell { flex: 1; text-align: center; padding: 4px; border-right: 1px solid #eee; }
+    .eye-label { width: 40px; font-weight: bold; background: #fafafa; }
+</style>
+</style>
+</body>
+</html>
+
+
