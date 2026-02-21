@@ -60,6 +60,8 @@ document.addEventListener("DOMContentLoaded", () => {
     if(document.getElementById('stockTable')) loadStock();
     if(document.getElementById('customerTable')) loadCustomers();
     if(document.getElementById('expenseList')) loadExpenses();
+    }).catch((err) => {
+        console.error("App init failed:", err);
     });
 });
 
@@ -1903,7 +1905,9 @@ function addNewRow() {
 
 // 2. Handle Dropdown Change
 function handleProductType(selectEl) {
+    if (!selectEl) return;
     activeRow = selectEl.closest('tr');
+    if (!activeRow) return;
     const type = selectEl.value;
     const setIfExists = (id, value) => {
         const el = document.getElementById(id);
@@ -1934,6 +1938,10 @@ function handleProductType(selectEl) {
         const rxWrap = document.getElementById('rxSelectWrap');
         if (rxWrap) rxWrap.style.display = 'none';
         initLensRxAutoCalc();
+    } else if (type === 'Solution' || type === 'Other' || type === 'Box') {
+        const modal = document.getElementById('modalFrame');
+        if (modal) modal.style.display = 'flex';
+        ['frCode','frBrand','frName','frSize','frColor','frMaterial','frPrice','frDisc'].forEach(id => setIfExists(id, ''));
     }
 }
 
@@ -2534,7 +2542,9 @@ function saveLensRxToDatabase(rxData) {
 
 // 6. Recalculate Total (row-level discount %)
 function calcRow(el) {
+    if (!el) return;
     const row = el.closest('tr');
+    if (!row) return;
     const qty = parseFloat(row.querySelector('.qty').value) || 0;
     const price = parseFloat(row.querySelector('.price').value) || 0;
     const discountsEnabled = getSettings().enableDiscounts !== false;
@@ -2549,6 +2559,7 @@ function calcRow(el) {
 }
 // --- NEW: Discount Calculation Logic (Percent <-> Amount) ---
 function calcDiscount(mode) {
+    if (!document.getElementById('txtDiscPercent') || !document.getElementById('txtDiscAmount')) return;
     if (getSettings().enableDiscounts === false) return;
     let baseTotal = 0;
     document.querySelectorAll('.item-row').forEach(row => {
@@ -2574,6 +2585,10 @@ function calcDiscount(mode) {
 
 // --- UPDATED: Calculate Final Totals ---
 function calculateFinal() {
+    const requiredIds = ['txtDiscAmount','txtRoundOff','txtBaseTotal','txtPayable','payCash','payUPI','payBank','txtTotalPaid','lblPending'];
+    const hasAll = requiredIds.every(id => document.getElementById(id));
+    if (!hasAll) return;
+
     let baseTotal = 0;
     document.querySelectorAll('.item-row').forEach(row => {
         baseTotal += parseFloat(row.querySelector('.row-total').value) || 0;
