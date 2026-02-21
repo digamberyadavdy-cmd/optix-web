@@ -134,8 +134,20 @@ function getSettings() {
     }
 }
 
-function saveSettings(settings) {
-    localStorage.setItem('optixSettings', JSON.stringify(settings));
+async function saveSettings(settings) {
+    const serialized = JSON.stringify(settings);
+    localStorage.setItem('optixSettings', serialized);
+    if (!db) return true;
+    try {
+        await db.collection('app_state').doc('optixSettings').set({
+            value: serialized,
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        }, { merge: true });
+        return true;
+    } catch (err) {
+        console.error("Settings cloud save failed:", err);
+        return false;
+    }
 }
 
 async function checkCloudConnection() {
@@ -534,7 +546,7 @@ function closeSettingsModal() {
     if (modal) modal.style.display = 'none';
 }
 
-function saveSettingsFromModal() {
+async function saveSettingsFromModal() {
     const s = getSettings();
     const read = (id) => { const el = document.getElementById(id); return el ? el.checked : false; };
     s.loginRequired = read('set_login_required');
@@ -545,13 +557,15 @@ function saveSettingsFromModal() {
     s.cloudSyncEnabled = read('set_cloud_sync');
     s.cloudSyncUrl = (document.getElementById('set_cloud_url')?.value || '').trim();
     s.cloudSyncToken = (document.getElementById('set_cloud_token')?.value || '').trim();
-    saveSettings(s);
+    const ok = await saveSettings(s);
     applySettings();
     closeSettingsModal();
 
     if (typeof loadPendingOrders === 'function') loadPendingOrders();
     if (typeof loadSalesHistory === 'function') loadSalesHistory();
+    await flushFirestoreStateQueue();
     scheduleCloudSync();
+    if (!ok) alert("Saved locally, but cloud settings sync failed.");
 }
 
 function bindSettingsIcon() {
