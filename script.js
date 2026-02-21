@@ -32,7 +32,8 @@ if (loginRequired && !isLoggedIn && !publicPages.includes(page) && page !== "") 
 
 document.addEventListener("DOMContentLoaded", () => {
     initFirebaseServices();
-    initCloudSync().then(() => {
+    initCloudSync().then(async () => {
+    await ensureProductsCache();
     applySettings();
     ensureSettingsModal();
     bindSettingsIcon();
@@ -534,6 +535,19 @@ async function saveProductToCloud(productData) {
     if (!db) return null;
     const ref = await db.collection("products").add(productData);
     return { ...productData, _docId: ref.id };
+}
+
+async function ensureProductsCache() {
+    const cached = JSON.parse(localStorage.getItem('optixProducts')) || [];
+    if (cached.length > 0) return cached;
+    if (!db) return cached;
+    try {
+        const cloudProducts = await loadProductsFromCloud();
+        return Array.isArray(cloudProducts) ? cloudProducts : [];
+    } catch (err) {
+        console.error("Products cache warmup failed:", err);
+        return cached;
+    }
 }
 
 async function loadProductsFromCloud() {
@@ -3138,7 +3152,7 @@ document.addEventListener('click', function(e) {
 
 // --- UNIFIED INVENTORY SEARCH ENGINE ---
 
-function searchInventory(inputId, searchField, categoryGroup, evt) {
+async function searchInventory(inputId, searchField, categoryGroup, evt) {
     if (evt && ['ArrowDown','ArrowUp','Enter','Escape','Tab'].includes(evt.key)) {
         return;
     }
@@ -3152,7 +3166,11 @@ function searchInventory(inputId, searchField, categoryGroup, evt) {
     }
 
     // 1. Fetch Products
-    const products = JSON.parse(localStorage.getItem('optixProducts')) || [];
+    let products = JSON.parse(localStorage.getItem('optixProducts')) || [];
+    if (products.length === 0 && db) {
+        const cloudProducts = await ensureProductsCache();
+        if (Array.isArray(cloudProducts)) products = cloudProducts;
+    }
 
     // 2. Filter Logic
     const results = products.filter(p => {
