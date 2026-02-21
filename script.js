@@ -104,6 +104,7 @@ const FIREBASE_PROJECT_ID = 'optixweb-68694';
 const DEFAULT_CLOUD_SYNC_URL = `https://${FIREBASE_PROJECT_ID}-default-rtdb.firebaseio.com/optixSync.json`;
 const CLOUD_SYNC_EXCLUDE_KEYS = ['optixLoggedIn', 'optixSessionStart', 'tempCustName', 'tempCustPhone'];
 const FIRESTORE_STATE_EXCLUDE_KEYS = ['optixProducts'];
+const optixMemoryStore = Object.create(null);
 let cloudSyncTimer = null;
 let cloudSyncBusy = false;
 let cloudApplyMode = false;
@@ -177,6 +178,10 @@ function shouldSyncKey(key) {
     return typeof key === 'string' && key.startsWith('optix') && !CLOUD_SYNC_EXCLUDE_KEYS.includes(key);
 }
 
+function isOptixKey(key) {
+    return typeof key === 'string' && key.startsWith('optix');
+}
+
 function shouldSyncFirestoreStateKey(key) {
     return shouldSyncKey(key) && !FIRESTORE_STATE_EXCLUDE_KEYS.includes(key);
 }
@@ -204,12 +209,9 @@ function getCloudHeaders(token) {
 
 function buildSyncSnapshot() {
     const data = {};
-    for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (shouldSyncKey(key)) {
-            data[key] = localStorage.getItem(key);
-        }
-    }
+    Object.keys(optixMemoryStore).forEach((key) => {
+        if (shouldSyncKey(key)) data[key] = optixMemoryStore[key];
+    });
     return data;
 }
 
@@ -369,16 +371,15 @@ async function seedFirestoreStateFromLocal() {
     if (!db) return;
     const batch = db.batch();
     let hasData = false;
-    for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (!shouldSyncFirestoreStateKey(key)) continue;
+    Object.keys(optixMemoryStore).forEach((key) => {
+        if (!shouldSyncFirestoreStateKey(key)) return;
         hasData = true;
         const ref = db.collection('app_state').doc(key);
         batch.set(ref, {
-            value: localStorage.getItem(key),
+            value: optixMemoryStore[key],
             updatedAt: firebase.firestore.FieldValue.serverTimestamp()
         }, { merge: true });
-    }
+    });
     if (hasData) await batch.commit();
 }
 
@@ -414,19 +415,47 @@ function hookStorageForCloudSync() {
     window.__optixStorageHooked = true;
     const _setItem = localStorage.setItem.bind(localStorage);
     const _removeItem = localStorage.removeItem.bind(localStorage);
+    const _getItem = localStorage.getItem.bind(localStorage);
+    const _key = localStorage.key.bind(localStorage);
     const _clear = localStorage.clear.bind(localStorage);
 
+    // Migrate legacy local optix data to memory (and remove persistent copies).
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+        const key = _key(i);
+        if (!isOptixKey(key)) continue;
+        const legacyValue = _getItem(key);
+        if (legacyValue !== null) optixMemoryStore[key] = legacyValue;
+        _removeItem(key);
+    }
+
+    localStorage.getItem = function(key) {
+        if (isOptixKey(key)) {
+            return Object.prototype.hasOwnProperty.call(optixMemoryStore, key) ? optixMemoryStore[key] : null;
+        }
+        return _getItem(key);
+    };
     localStorage.setItem = function(key, value) {
+        if (isOptixKey(key)) {
+            optixMemoryStore[key] = String(value);
+            _removeItem(key);
+            if (shouldSyncKey(key)) scheduleCloudSync();
+            if (!firestoreStateApplyMode) queueFirestoreStateSync(key, String(value), false);
+            return;
+        }
         _setItem(key, value);
-        if (shouldSyncKey(key)) scheduleCloudSync();
-        if (!firestoreStateApplyMode) queueFirestoreStateSync(key, value, false);
     };
     localStorage.removeItem = function(key) {
+        if (isOptixKey(key)) {
+            delete optixMemoryStore[key];
+            _removeItem(key);
+            if (shouldSyncKey(key)) scheduleCloudSync();
+            if (!firestoreStateApplyMode) queueFirestoreStateSync(key, null, true);
+            return;
+        }
         _removeItem(key);
-        if (shouldSyncKey(key)) scheduleCloudSync();
-        if (!firestoreStateApplyMode) queueFirestoreStateSync(key, null, true);
     };
     localStorage.clear = function() {
+        Object.keys(optixMemoryStore).forEach((k) => { delete optixMemoryStore[k]; });
         _clear();
         scheduleCloudSync();
     };
