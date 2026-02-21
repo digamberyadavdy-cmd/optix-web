@@ -42,7 +42,8 @@
         .rx-eye-label { font-weight: bold; background: #f9f9f9; width: 40px; }
     </style>
 <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>`r`n<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-auth-compat.js"></script></head>
+<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-auth-compat.js"></script></head>
 <body>
 
     <div class="no-print" style="margin-bottom: 20px;">
@@ -136,6 +137,56 @@
     </div>
 
     <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyAjhZmLtNG2wQi-crQvmDpIzY66wLtmbz0",
+            authDomain: "optixweb-68694.firebaseapp.com",
+            projectId: "optixweb-68694",
+            storageBucket: "optixweb-68694.firebasestorage.app",
+            messagingSenderId: "901004471219",
+            appId: "1:901004471219:web:084f95ebc3ebb792dcb9c6",
+            measurementId: "G-1VMMR61PSX"
+        };
+        let db = null;
+
+        function initFirebaseForInvoice() {
+            try {
+                if (typeof firebase === 'undefined') return;
+                if (!firebase.apps || firebase.apps.length === 0) {
+                    firebase.initializeApp(firebaseConfig);
+                }
+                db = firebase.firestore();
+            } catch (e) {
+                console.error("Invoice Firebase init failed:", e);
+            }
+        }
+
+        async function readEntityDoc(collectionName) {
+            if (!db) return null;
+            try {
+                const snap = await db.collection(collectionName).doc('main').get();
+                if (!snap.exists) return null;
+                const data = snap.data() || {};
+                return (typeof data.value === 'string') ? data.value : null;
+            } catch (e) {
+                console.error(`Read ${collectionName} failed:`, e);
+                return null;
+            }
+        }
+
+        async function writeEntityDoc(collectionName, valueStr) {
+            if (!db) return false;
+            try {
+                await db.collection(collectionName).doc('main').set({
+                    value: valueStr,
+                    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                }, { merge: true });
+                return true;
+            } catch (e) {
+                console.error(`Write ${collectionName} failed:`, e);
+                return false;
+            }
+        }
+
         let activeOrderId = null;
         let activeOrder = null;
 
@@ -189,8 +240,15 @@
             return null;
         }
 
-        document.addEventListener("DOMContentLoaded", () => {
-            const orders = JSON.parse(localStorage.getItem('optixOrders')) || [];
+        document.addEventListener("DOMContentLoaded", async () => {
+            initFirebaseForInvoice();
+            let orders = JSON.parse(localStorage.getItem('optixOrders')) || [];
+            if (!orders.length) {
+                const cloudOrdersRaw = await readEntityDoc('orders_state');
+                if (cloudOrdersRaw) {
+                    try { orders = JSON.parse(cloudOrdersRaw) || []; } catch (e) {}
+                }
+            }
             const urlParams = new URLSearchParams(window.location.search);
             const paramId = urlParams.get('orderId');
             const mode = urlParams.get('mode');
@@ -203,7 +261,13 @@
                 document.getElementById('inv-name').innerHTML = `Name: <strong>${orderToLoad.name}</strong>`;
                 document.getElementById('inv-phone').innerText = "Phone: " + orderToLoad.phone;
                 document.getElementById('inv-date').innerText = "Date: " + new Date(orderToLoad.date).toLocaleDateString();
-                const settings = JSON.parse(localStorage.getItem('optixSettings') || "{}");
+                let settings = JSON.parse(localStorage.getItem('optixSettings') || "{}");
+                if (!settings || Object.keys(settings).length === 0) {
+                    const cloudSettingsRaw = await readEntityDoc('settings_state');
+                    if (cloudSettingsRaw) {
+                        try { settings = JSON.parse(cloudSettingsRaw) || {}; } catch (e) {}
+                    }
+                }
                 const useAutoInv = settings.autoInvoiceNo !== false;
                 const invNo = (useAutoInv && orderToLoad.invoiceNo)
                     ? orderToLoad.invoiceNo.toString().padStart(6, '0')
@@ -258,7 +322,7 @@
             }
         });
 
-        function saveAdditionalPayment() {
+        async function saveAdditionalPayment() {
             if (!activeOrderId) return;
 
             const addCash = parseFloat(document.getElementById('payAddCash').value) || 0;
@@ -285,6 +349,7 @@
             }
 
             localStorage.setItem('optixOrders', JSON.stringify(orders));
+            await writeEntityDoc('orders_state', JSON.stringify(orders));
 
             // Update UI totals
             document.getElementById('inv-paid').innerText = "Rs " + parseFloat(orders[idx].paid).toFixed(2);
