@@ -13,25 +13,43 @@ const firebaseConfig = {
     measurementId: "G-1VMMR61PSX"
 };
 let db = null;
+let productsRealtimeSubscribed = false;
 
 // 2. Get current file name
 const path = window.location.pathname;
 const page = path.split("/").pop();
 
-// 3. Check Authentication
-const isLoggedIn = localStorage.getItem('optixLoggedIn') === 'true';
-const settingsGate = getSettings();
-const loginRequired = settingsGate.loginRequired !== false;
+function enforceAccessGate(firebaseSignedIn) {
+    const settingsGate = getSettings();
+    const loginRequired = settingsGate.loginRequired !== false;
+    const localSignedIn = localStorage.getItem('optixLoggedIn') === 'true';
+    const isSignedIn = !!firebaseSignedIn || localSignedIn;
+    if (loginRequired && !isSignedIn && !publicPages.includes(page) && page !== "") {
+        console.log("Unauthorized access. Redirecting to login.");
+        window.location.href = 'login.html';
+    }
+}
 
-// 4. Redirect if not logged in AND trying to access a private page
-if (loginRequired && !isLoggedIn && !publicPages.includes(page) && page !== "") {
-    // Save where they were trying to go (optional)
-    console.log("Unauthorized access. Redirecting to login.");
-    window.location.href = 'login.html';
+function initAuthGatekeeper() {
+    if (typeof firebase === 'undefined' || !firebase.auth) {
+        enforceAccessGate(false);
+        return;
+    }
+    try {
+        firebase.auth().onAuthStateChanged((user) => {
+            if (user) localStorage.setItem('optixLoggedIn', 'true');
+            else localStorage.removeItem('optixLoggedIn');
+            enforceAccessGate(!!user);
+        });
+    } catch (err) {
+        console.error("Auth gate init failed:", err);
+        enforceAccessGate(false);
+    }
 }
 
 document.addEventListener("DOMContentLoaded", () => {
     initFirebaseServices();
+    initAuthGatekeeper();
     initCloudSync().then(async () => {
     await ensureProductsCache();
     applySettings();
@@ -76,6 +94,7 @@ function initFirebaseServices() {
         }
         db = firebase.firestore();
         window.db = db;
+        if (firebase.auth) window.auth = firebase.auth();
     } catch (err) {
         console.error('Firebase init failed:', err);
     }
@@ -493,7 +512,7 @@ function resetAllData() {
     window.location.href = 'login.html';
 }
 
-function performLogin() {
+async function performLogin() {
     const user = document.getElementById('loginUser').value;
     const pass = document.getElementById('loginPass').value;
     const errorMsg = document.getElementById('loginError');
@@ -501,6 +520,14 @@ function performLogin() {
     // --- SET YOUR PASSWORD HERE ---
     // Currently set to: admin / admin123
     if (user === "admin" && pass === "admin123") {
+        try {
+            if (typeof firebase !== 'undefined' && firebase.auth) {
+                const auth = firebase.auth();
+                if (!auth.currentUser) await auth.signInAnonymously();
+            }
+        } catch (err) {
+            console.error("Firebase login failed; using local session.", err);
+        }
         localStorage.setItem('optixLoggedIn', 'true');
         localStorage.setItem('optixSessionStart', new Date().toISOString());
         window.location.href = 'dashboard.html';
@@ -514,8 +541,15 @@ function performLogin() {
     }
 }
 
-function performLogout() {
+async function performLogout() {
     if(confirm("Are you sure you want to Logout?")) {
+        try {
+            if (typeof firebase !== 'undefined' && firebase.auth) {
+                await firebase.auth().signOut();
+            }
+        } catch (err) {
+            console.error("Firebase signout failed:", err);
+        }
         localStorage.removeItem('optixLoggedIn');
         window.location.href = 'login.html';
     }
@@ -561,6 +595,27 @@ async function loadProductsFromCloud() {
     });
     localStorage.setItem('optixProducts', JSON.stringify(products));
     return products;
+}
+
+function refreshProductDrivenViews() {
+    if (document.getElementById('productListBody')) loadProducts();
+    if (document.getElementById('inventoryListBody')) loadInventory();
+    if (document.getElementById('stockTable')) loadStock();
+}
+
+function subscribeProductsRealtime() {
+    if (!db || productsRealtimeSubscribed) return;
+    productsRealtimeSubscribed = true;
+    db.collection("products").onSnapshot((snapshot) => {
+        const products = [];
+        snapshot.forEach((doc) => {
+            products.push({ ...doc.data(), _docId: doc.id });
+        });
+        localStorage.setItem('optixProducts', JSON.stringify(products));
+        refreshProductDrivenViews();
+    }, (err) => {
+        console.error("Realtime product sync failed:", err);
+    });
 }
 
 // --- FIX 1: Save Unique Barcodes for Each Quantity ---
@@ -629,7 +684,12 @@ async function loadProducts() {
     if (!tbody) return;
     tbody.innerHTML = "";
 
-    const products = JSON.parse(localStorage.getItem('optixProducts')) || [];
+    if (db) subscribeProductsRealtime();
+    let products = JSON.parse(localStorage.getItem('optixProducts')) || [];
+    if (products.length === 0 && db) {
+        const cloudProducts = await ensureProductsCache();
+        if (Array.isArray(cloudProducts)) products = cloudProducts;
+    }
     
     // Get Search Inputs
     const fCat = document.getElementById('fCat') ? document.getElementById('fCat').value.toLowerCase() : "";
