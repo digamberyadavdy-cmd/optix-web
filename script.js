@@ -111,6 +111,8 @@ let firestoreStateApplyMode = false;
 let firestoreStateSyncBusy = false;
 let firestoreStateSyncTimer = null;
 const firestoreStateQueue = new Map();
+let firestoreOnline = false;
+let firestoreLastError = "";
 
 function getSettings() {
     const defaults = {
@@ -134,6 +136,29 @@ function getSettings() {
 
 function saveSettings(settings) {
     localStorage.setItem('optixSettings', JSON.stringify(settings));
+}
+
+async function checkCloudConnection() {
+    try {
+        if (!db) {
+            alert("Cloud not connected: Firebase Firestore is not initialized.");
+            return;
+        }
+        const ref = db.collection('app_state').doc('__healthcheck');
+        await ref.set({
+            pingAt: firebase.firestore.FieldValue.serverTimestamp(),
+            clientAt: new Date().toISOString()
+        }, { merge: true });
+        const snap = await ref.get();
+        if (!snap.exists) throw new Error("Healthcheck document missing after write.");
+        firestoreOnline = true;
+        firestoreLastError = "";
+        alert("Cloud connected successfully (Firestore read/write OK).");
+    } catch (err) {
+        firestoreOnline = false;
+        firestoreLastError = (err && err.message) ? err.message : String(err);
+        alert("Cloud connection failed: " + firestoreLastError);
+    }
 }
 
 function shouldSyncKey(key) {
@@ -286,8 +311,12 @@ async function flushFirestoreStateQueue() {
         });
         firestoreStateQueue.clear();
         await batch.commit();
+        firestoreOnline = true;
+        firestoreLastError = "";
     } catch (err) {
         console.error('Firestore state sync failed:', err);
+        firestoreOnline = false;
+        firestoreLastError = (err && err.message) ? err.message : String(err);
     } finally {
         firestoreStateSyncBusy = false;
     }
@@ -326,8 +355,12 @@ async function pullFirestoreState() {
                 localStorage.setItem(doc.id, data.value);
             }
         });
+        firestoreOnline = true;
+        firestoreLastError = "";
     } catch (err) {
         console.error('Firestore state pull failed:', err);
+        firestoreOnline = false;
+        firestoreLastError = (err && err.message) ? err.message : String(err);
     } finally {
         firestoreStateApplyMode = false;
     }
@@ -435,6 +468,7 @@ function ensureSettingsModal() {
                     <button class="optix-btn optix-btn-muted" onclick="closeSettingsModal()">Close</button>
                     <button class="optix-btn optix-btn-primary" onclick="syncNowToCloud()">Sync Now</button>
                     <button class="optix-btn optix-btn-muted" onclick="pullNowFromCloud()">Pull From Cloud</button>
+                    <button class="optix-btn optix-btn-primary" onclick="checkCloudConnection()">Test Cloud</button>
                     <button class="optix-btn optix-btn-warn" onclick="backupData()">Backup Data</button>
                     <button class="optix-btn optix-btn-warn" onclick="document.getElementById('restoreFile').click()">Restore Data</button>
                     <input type="file" id="restoreFile" style="display:none" onchange="restoreData(this)">
@@ -612,8 +646,12 @@ function subscribeProductsRealtime() {
         });
         localStorage.setItem('optixProducts', JSON.stringify(products));
         refreshProductDrivenViews();
+        firestoreOnline = true;
+        firestoreLastError = "";
     }, (err) => {
         console.error("Realtime product sync failed:", err);
+        firestoreOnline = false;
+        firestoreLastError = (err && err.message) ? err.message : String(err);
     });
 }
 
