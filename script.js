@@ -263,13 +263,44 @@ async function pullCloudSnapshot(showAlerts = false) {
 }
 
 async function syncNowToCloud() {
-    const ok = await pushCloudSnapshot('manual');
-    if (ok) alert("Cloud sync complete.");
+    let okFirestore = false;
+    let okRtdb = false;
+    try {
+        if (db) {
+            await flushFirestoreStateQueue();
+            okFirestore = true;
+        }
+    } catch (err) {
+        console.error("Manual Firestore sync failed:", err);
+    }
+    // Use non-manual reason to avoid false-negative alert when RTDB is optional.
+    okRtdb = await pushCloudSnapshot('auto');
+    if (okFirestore || okRtdb) {
+        alert("Cloud sync complete.");
+    } else {
+        alert("Cloud sync failed. Check Firebase rules/internet.");
+    }
 }
 
 async function pullNowFromCloud() {
-    const ok = await pullCloudSnapshot(true);
-    if (ok) location.reload();
+    let okFirestore = false;
+    let okRtdb = false;
+    try {
+        if (db) {
+            await pullFirestoreState();
+            okFirestore = true;
+        }
+    } catch (err) {
+        console.error("Manual Firestore pull failed:", err);
+    }
+    // RTDB pull is optional fallback; keep user alert if both fail.
+    okRtdb = await pullCloudSnapshot(false);
+    if (okFirestore || okRtdb) {
+        alert("Cloud data pulled successfully. Reloading...");
+        location.reload();
+    } else {
+        alert("Cloud pull failed. Check Firebase rules/internet.");
+    }
 }
 
 function scheduleCloudSync() {
