@@ -38,7 +38,6 @@ function initAuthGatekeeper() {
     try {
         firebase.auth().onAuthStateChanged((user) => {
             if (user) localStorage.setItem('optixLoggedIn', 'true');
-            else localStorage.removeItem('optixLoggedIn');
             enforceAccessGate(!!user);
         });
     } catch (err) {
