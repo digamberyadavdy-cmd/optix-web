@@ -78,7 +78,7 @@
     <script src="script.js"></script>
     <script>
         // Check if already logged in, redirect to dashboard
-        if(localStorage.getItem('optixLoggedIn') === 'true') {
+        if(localStorage.getItem('optixLoggedIn') === 'true' || sessionStorage.getItem('optixLoggedIn') === 'true') {
             window.location.href = 'dashboard.html';
         }
     </script>

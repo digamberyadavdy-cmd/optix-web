@@ -23,7 +23,8 @@ function enforceAccessGate(firebaseSignedIn) {
     const settingsGate = getSettings();
     const loginRequired = settingsGate.loginRequired !== false;
     const localSignedIn = localStorage.getItem('optixLoggedIn') === 'true';
-    const isSignedIn = !!firebaseSignedIn || localSignedIn;
+    const sessionSignedIn = sessionStorage.getItem('optixLoggedIn') === 'true';
+    const isSignedIn = !!firebaseSignedIn || localSignedIn || sessionSignedIn;
     if (loginRequired && !isSignedIn && !publicPages.includes(page) && page !== "") {
         console.log("Unauthorized access. Redirecting to login.");
         window.location.href = 'login.html';
@@ -636,6 +637,7 @@ async function performLogin() {
             console.error("Firebase login failed; using local session.", err);
         }
         localStorage.setItem('optixLoggedIn', 'true');
+        sessionStorage.setItem('optixLoggedIn', 'true');
         localStorage.setItem('optixSessionStart', new Date().toISOString());
         window.location.href = 'dashboard.html';
     } else {
@@ -658,6 +660,7 @@ async function performLogout() {
             console.error("Firebase signout failed:", err);
         }
         localStorage.removeItem('optixLoggedIn');
+        sessionStorage.removeItem('optixLoggedIn');
         window.location.href = 'login.html';
     }
 }
