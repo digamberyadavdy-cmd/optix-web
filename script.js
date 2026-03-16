@@ -508,13 +508,12 @@ function hookStorageForCloudSync() {
     const _key = localStorage.key.bind(localStorage);
     const _clear = localStorage.clear.bind(localStorage);
 
-    // Migrate legacy local optix data to memory (and remove persistent copies).
+    // Migrate legacy local optix data to memory (keep persistent copies for standalone pages like invoice.html).
     for (let i = localStorage.length - 1; i >= 0; i--) {
         const key = _key(i);
         if (!isOptixKey(key)) continue;
         const legacyValue = _getItem(key);
         if (legacyValue !== null) optixMemoryStore[key] = legacyValue;
-        _removeItem(key);
     }
 
     localStorage.getItem = function(key) {
@@ -526,7 +525,7 @@ function hookStorageForCloudSync() {
     localStorage.setItem = function(key, value) {
         if (isOptixKey(key)) {
             optixMemoryStore[key] = String(value);
-            _removeItem(key);
+            _setItem(key, value); // keep a persisted fallback so invoice.html can read without the memory shim
             if (shouldSyncKey(key)) scheduleCloudSync();
             if (!entityDocApplyMode) queueEntityDocSync(key, String(value), false);
             if (!firestoreStateApplyMode) queueFirestoreStateSync(key, String(value), false);
@@ -1285,6 +1284,15 @@ async function saveOrder(openInNewTab = false) {
         customers.push({ id: Date.now(), name: name, phone: phone, lastVisit: updatedOrder.date });
     }
     localStorage.setItem('optixCustomers', JSON.stringify(customers));
+
+    // Ensure entity/state docs are persisted before leaving the page.
+    // invoice.html relies on Firestore orders_state when optix keys are memory-backed.
+    try {
+        await flushEntityDocQueue();
+        await flushFirestoreStateQueue();
+    } catch (err) {
+        console.error("Pre-redirect cloud flush failed:", err);
+    }
 
     // 5. SUCCESS
     if(openInNewTab) {
