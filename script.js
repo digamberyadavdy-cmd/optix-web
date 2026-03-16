@@ -1271,7 +1271,9 @@ async function saveOrder(openInNewTab = false) {
         orders.push(updatedOrder);
     }
 
-    localStorage.setItem('optixOrders', JSON.stringify(orders));
+    const ordersJson = JSON.stringify(orders);
+    localStorage.setItem('optixOrders', ordersJson);
+    sessionStorage.setItem('optixOrdersSnapshot', ordersJson); // fallback for invoice.html if memory store inaccessible
     localStorage.setItem('optixProducts', JSON.stringify(productsWorking));
 
     // Save Customer Data (Updates existing or adds new)

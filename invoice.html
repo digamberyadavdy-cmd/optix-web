@@ -244,9 +244,15 @@
             initFirebaseForInvoice();
             let orders = JSON.parse(localStorage.getItem('optixOrders')) || [];
             if (!orders.length) {
+                const snap = sessionStorage.getItem('optixOrdersSnapshot');
+                if (snap) {
+                    try { orders = JSON.parse(snap) || []; } catch (e) { orders = []; }
+                }
+            }
+            if (!orders.length) {
                 const cloudOrdersRaw = await readEntityDoc('orders_state');
                 if (cloudOrdersRaw) {
-                    try { orders = JSON.parse(cloudOrdersRaw) || []; } catch (e) {}
+                    try { orders = JSON.parse(cloudOrdersRaw) || []; } catch (e) { orders = []; }
                 }
             }
             const urlParams = new URLSearchParams(window.location.search);
