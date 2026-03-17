@@ -4009,6 +4009,7 @@ function buildDailyStatement() {
     let expCash = 0;
     let expUpi = 0;
     let expBank = 0;
+    const expenseRows = [];
 
     const formatTsShort = (ts) => {
         const d = new Date(ts);
@@ -4062,6 +4063,12 @@ function buildDailyStatement() {
         if (mode === 'upi') expUpi += amt;
         else if (mode === 'bank' || mode === 'card') expBank += amt;
         else expCash += amt;
+        expenseRows.push({
+            date: expDate,
+            desc: e.desc || '',
+            amount: amt,
+            mode: mode
+        });
     });
 
     const expTotal = expCash + expUpi + expBank;
@@ -4102,11 +4109,6 @@ function buildDailyStatement() {
         </div>
     `;
 
-    if (rows.length === 0) {
-        container.innerHTML = headerHtml + `<div style="padding:10px; font-size:12px; color:#777;">No sales found in this date range.</div>`;
-        return;
-    }
-
     const tableRows = rows.map((r, i) => `
         <tr>
             <td>${i + 1}</td>
@@ -4133,8 +4135,18 @@ function buildDailyStatement() {
         </tr>
     `).join('');
 
-    container.innerHTML = headerHtml + `
-        <table style="width:100%; border-collapse:collapse; font-size:12px;">
+    const expensesTableRows = expenseRows.map((e, i) => `
+        <tr>
+            <td>${i + 1}</td>
+            <td>${e.date}</td>
+            <td>${e.desc}</td>
+            <td style="text-align:right;">${e.amount.toFixed(2)}</td>
+            <td style="text-transform:uppercase; text-align:center;">${e.mode}</td>
+        </tr>
+    `).join('');
+
+    const ordersTableHtml = rows.length ? `
+        <table style="width:100%; border-collapse:collapse; font-size:12px; margin-bottom:16px;">
             <thead>
                 <tr style="background:#f4f4f4;">
                     <th style="border:1px solid #ccc; padding:6px;">#</th>
@@ -4154,7 +4166,27 @@ function buildDailyStatement() {
                 ${tableRows}
             </tbody>
         </table>
-    `;
+    ` : `<div style="padding:10px; font-size:12px; color:#777;">No sales found in this date range.</div>`;
+
+    const expensesTableHtml = expenseRows.length ? `
+        <div style="margin-top:10px; font-weight:bold; font-size:13px;">Expenses</div>
+        <table style="width:100%; border-collapse:collapse; font-size:12px;">
+            <thead>
+                <tr style="background:#f4f4f4;">
+                    <th style="border:1px solid #ccc; padding:6px;">#</th>
+                    <th style="border:1px solid #ccc; padding:6px;">Date</th>
+                    <th style="border:1px solid #ccc; padding:6px;">Description</th>
+                    <th style="border:1px solid #ccc; padding:6px; text-align:right;">Amount</th>
+                    <th style="border:1px solid #ccc; padding:6px; text-align:center;">Mode</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${expensesTableRows}
+            </tbody>
+        </table>
+    ` : `<div style="padding:10px; font-size:12px; color:#777;">No expenses found in this date range.</div>`;
+
+    container.innerHTML = headerHtml + ordersTableHtml + expensesTableHtml;
 }
 
 function downloadDailyStatementPDF() {
