@@ -1240,6 +1240,27 @@ async function saveOrder(openInNewTab = false) {
         if (!invoiceNo) invoiceNo = getNextInvoiceNo();
     }
 
+    // Build/extend payment history so we can show part-payments + mode in reports
+    const prevHistory = (isEdit && editingOriginalOrder && Array.isArray(editingOriginalOrder.paymentHistory))
+        ? [...editingOriginalOrder.paymentHistory]
+        : [];
+    const prevCash = isEdit && editingOriginalOrder ? (parseFloat(editingOriginalOrder.paidCash) || 0) : 0;
+    const prevUpi = isEdit && editingOriginalOrder ? (parseFloat(editingOriginalOrder.paidUpi) || 0) : 0;
+    const prevBank = isEdit && editingOriginalOrder ? (parseFloat(editingOriginalOrder.paidBank) || 0) : 0;
+    const addedCash = Math.max(0, paidCashTotal - prevCash);
+    const addedUpi = Math.max(0, paidUpiTotal - prevUpi);
+    const addedBank = Math.max(0, paidBankTotal - prevBank);
+    const addedTotal = addedCash + addedUpi + addedBank;
+    if (addedTotal > 0.0001) {
+        prevHistory.push({
+            ts: new Date().toISOString(),
+            cash: addedCash,
+            upi: addedUpi,
+            bank: addedBank,
+            total: addedTotal
+        });
+    }
+
     const updatedOrder = {
         id: orderId,
         invoiceNo: invoiceNo,
@@ -1250,6 +1271,7 @@ async function saveOrder(openInNewTab = false) {
         paidCash: paidCashTotal,
         paidUpi: paidUpiTotal,
         paidBank: paidBankTotal,
+        paymentHistory: prevHistory,
         date: document.getElementById('orderDate').value || new Date().toISOString(),
         baseTotal: baseTotal,
         grossTotal: grossTotal,
@@ -3977,6 +3999,20 @@ function buildDailyStatement() {
     const rows = [];
     let totalAmount = 0;
     let totalPaid = 0;
+    let totalCash = 0;
+    let totalUpi = 0;
+    let totalBank = 0;
+
+    const formatTsShort = (ts) => {
+        const d = new Date(ts);
+        if (isNaN(d.getTime())) return ts || "";
+        const yyyy = d.getFullYear();
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        const dd = String(d.getDate()).padStart(2, '0');
+        const hh = String(d.getHours()).padStart(2, '0');
+        const min = String(d.getMinutes()).padStart(2, '0');
+        return `${yyyy}-${mm}-${dd} ${hh}:${min}`;
+    };
 
     orders.forEach(o => {
         const status = o.status || "Pending";
@@ -3986,9 +4022,15 @@ function buildDailyStatement() {
 
         const amount = parseFloat(o.amount) || 0;
         const paid = parseFloat(o.paid) || 0;
+        const paidCash = parseFloat(o.paidCash) || 0;
+        const paidUpi = parseFloat(o.paidUpi) || 0;
+        const paidBank = parseFloat(o.paidBank) || 0;
         const balance = amount - paid;
         totalAmount += amount;
         totalPaid += paid;
+        totalCash += paidCash;
+        totalUpi += paidUpi;
+        totalBank += paidBank;
 
         rows.push({
             date: orderDate,
@@ -3997,7 +4039,11 @@ function buildDailyStatement() {
             phone: o.phone,
             amount,
             paid,
-            balance
+            balance,
+            paidCash,
+            paidUpi,
+            paidBank,
+            history: Array.isArray(o.paymentHistory) ? o.paymentHistory : []
         });
     });
 
@@ -4012,7 +4058,10 @@ function buildDailyStatement() {
         <div style="display:flex; gap:10px; font-size:12px; margin-bottom:10px;">
             <div style="flex:1; border:1px solid #eee; padding:8px;"><strong>Total Orders:</strong> ${rows.length}</div>
             <div style="flex:1; border:1px solid #eee; padding:8px;"><strong>Total Amount:</strong> Rs ${totalAmount.toFixed(2)}</div>
-            <div style="flex:1; border:1px solid #eee; padding:8px;"><strong>Total Paid:</strong> Rs ${totalPaid.toFixed(2)}</div>
+            <div style="flex:1; border:1px solid #eee; padding:8px;">
+                <strong>Total Paid:</strong> Rs ${totalPaid.toFixed(2)}<br>
+                <span style="color:#555; font-size:11px;">Cash: ${totalCash.toFixed(2)} | UPI: ${totalUpi.toFixed(2)} | Card/Bank: ${totalBank.toFixed(2)}</span>
+            </div>
             <div style="flex:1; border:1px solid #eee; padding:8px;"><strong>Total Balance:</strong> Rs ${totalBalance.toFixed(2)}</div>
         </div>
     `;
@@ -4031,7 +4080,19 @@ function buildDailyStatement() {
             <td>${r.phone}</td>
             <td style="text-align:right;">${r.amount.toFixed(2)}</td>
             <td style="text-align:right;">${r.paid.toFixed(2)}</td>
+            <td style="text-align:right;">
+                <div>Cash: ${r.paidCash.toFixed(2)}</div>
+                <div>UPI: ${r.paidUpi.toFixed(2)}</div>
+                <div>Card/Bank: ${r.paidBank.toFixed(2)}</div>
+            </td>
             <td style="text-align:right;">${r.balance.toFixed(2)}</td>
+            <td style="font-size:11px; line-height:1.4;">
+                ${
+                    r.history.length
+                        ? r.history.map((h, idx) => `${idx + 1}) ${formatTsShort(h.ts)} - Cash ${ (parseFloat(h.cash)||0).toFixed(2) }, UPI ${(parseFloat(h.upi)||0).toFixed(2)}, Card ${(parseFloat(h.bank)||0).toFixed(2)}`).join('<br>')
+                        : '<span style="color:#777">No payment entries saved</span>'
+                }
+            </td>
         </tr>
     `).join('');
 
@@ -4046,7 +4107,9 @@ function buildDailyStatement() {
                     <th style="border:1px solid #ccc; padding:6px;">Phone</th>
                     <th style="border:1px solid #ccc; padding:6px; text-align:right;">Amount</th>
                     <th style="border:1px solid #ccc; padding:6px; text-align:right;">Paid</th>
+                    <th style="border:1px solid #ccc; padding:6px; text-align:right;">Paid Split</th>
                     <th style="border:1px solid #ccc; padding:6px; text-align:right;">Balance</th>
+                    <th style="border:1px solid #ccc; padding:6px; text-align:left;">Payment History</th>
                 </tr>
             </thead>
             <tbody>
@@ -4137,6 +4200,14 @@ function viewPayments(id) {
         const paidBank = parseFloat(order.paidBank) || 0;
         const paidTotal = parseFloat(order.paid) || (paidCash + paidUpi + paidBank);
         const balance = (parseFloat(order.amount) || 0) - paidTotal;
+        const history = Array.isArray(order.paymentHistory) ? order.paymentHistory : [];
+        const historyText = history.length
+            ? history.map((p, i) => {
+                const d = new Date(p.ts);
+                const ts = isNaN(d.getTime()) ? (p.ts || "") : `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+                return `${i+1}) ${ts} -> Cash ${ (parseFloat(p.cash)||0).toFixed(2) }, UPI ${ (parseFloat(p.upi)||0).toFixed(2) }, Card ${ (parseFloat(p.bank)||0).toFixed(2) }`;
+            }).join('\n')
+            : "No individual payment entries recorded.";
 
         alert(
             `Payment Details for Order #${id}\n\n` +
@@ -4145,7 +4216,8 @@ function viewPayments(id) {
             ` - Cash: ${paidCash.toFixed(2)}\n` +
             ` - UPI: ${paidUpi.toFixed(2)}\n` +
             ` - Bank/Card: ${paidBank.toFixed(2)}\n` +
-            `Balance: ${balance.toFixed(2)}`
+            `Balance: ${balance.toFixed(2)}\n\n` +
+            `Payment History:\n${historyText}`
         );
     }
 }
