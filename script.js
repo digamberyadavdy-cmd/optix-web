@@ -3991,9 +3991,51 @@ function setStatementDefaultDates() {
     if (!toEl.value) toEl.value = today;
 }
 
+function ensureDailyStatementStyles() {
+    if (document.getElementById('ds-style')) return;
+    const style = document.createElement('style');
+    style.id = 'ds-style';
+    style.textContent = `
+        .ds-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 12px;
+            margin: 10px 0 16px;
+        }
+        .ds-card {
+            border-radius: 10px;
+            padding: 12px 14px;
+            color: #0f172a;
+            box-shadow: 0 4px 10px rgba(15, 23, 42, 0.08);
+            border: 1px solid rgba(0,0,0,0.05);
+            background: linear-gradient(135deg, #ffffff, #f8fafc);
+        }
+        .ds-card.ds-blue { background: linear-gradient(135deg, #e0f2fe, #ffffff); border-color:#bae6fd; }
+        .ds-card.ds-purple { background: linear-gradient(135deg, #ede9fe, #ffffff); border-color:#ddd6fe; }
+        .ds-card.ds-green { background: linear-gradient(135deg, #dcfce7, #ffffff); border-color:#bbf7d0; }
+        .ds-card.ds-amber { background: linear-gradient(135deg, #fef3c7, #ffffff); border-color:#fde68a; }
+        .ds-card.ds-red { background: linear-gradient(135deg, #fee2e2, #ffffff); border-color:#fecaca; }
+        .ds-card.ds-teal { background: linear-gradient(135deg, #ccfbf1, #ffffff); border-color:#99f6e4; }
+        .ds-card.ds-slate { background: linear-gradient(135deg, #e2e8f0, #ffffff); border-color:#cbd5e1; }
+        .ds-card-title { font-size:13px; font-weight:700; letter-spacing:0.2px; color:#334155; }
+        .ds-card-value { font-size:20px; font-weight:800; margin-top:4px; color:#0f172a; }
+        .ds-card-sub { font-size:12px; color:#475569; margin-top:4px; line-height:1.4; }
+        .ds-section-title { margin: 16px 0 8px; font-size:14px; font-weight:800; color:#0f172a; }
+        .ds-table { width:100%; border-collapse:collapse; font-size:12px; box-shadow:0 3px 10px rgba(15,23,42,0.08); }
+        .ds-table th { background:#f8fafc; color:#334155; font-weight:700; text-align:left; }
+        .ds-table th, .ds-table td { border:1px solid #e2e8f0; padding:8px; }
+        .ds-table tbody tr:nth-child(odd) { background:#f9fafb; }
+        .ds-badge { display:inline-block; padding:2px 8px; border-radius:12px; font-size:10px; font-weight:700; }
+        .ds-badge.pending { background:#fef3c7; color:#92400e; }
+        .ds-badge.confirmed { background:#dcfce7; color:#166534; }
+    `;
+    document.head.appendChild(style);
+}
+
 function buildDailyStatement() {
     const container = document.getElementById('statementContent');
     if (!container) return;
+    ensureDailyStatementStyles();
 
     const { from, to } = getStatementDateRange();
     lastStatementRange = { from, to };
@@ -4080,31 +4122,42 @@ function buildDailyStatement() {
     const totalBalance = totalAmount - totalPaid;
 
     const headerHtml = `
-        <div style="text-align:center; margin-bottom:10px;">
-            <div style="font-size:18px; font-weight:bold;">CITY OPTICAL CENTER</div>
+        <div style="text-align:center; margin:6px 0 4px;">
+            <div style="font-size:20px; font-weight:800;">CITY OPTICAL CENTER</div>
             <div style="font-size:12px;">Daily Statement</div>
             <div style="font-size:12px; color:#555;">From ${from} To ${to}</div>
         </div>
-        <div style="display:flex; gap:10px; font-size:12px; margin-bottom:10px;">
-            <div style="flex:1; border:1px solid #eee; padding:8px;"><strong>Total Orders:</strong> ${rows.length}</div>
-            <div style="flex:1; border:1px solid #eee; padding:8px;"><strong>Total Amount:</strong> Rs ${totalAmount.toFixed(2)}</div>
-            <div style="flex:1; border:1px solid #eee; padding:8px;">
-                <strong>Total Paid:</strong> Rs ${totalPaid.toFixed(2)}<br>
-                <span style="color:#555; font-size:11px;">Cash: ${totalCash.toFixed(2)} | UPI: ${totalUpi.toFixed(2)} | Card/Bank: ${totalBank.toFixed(2)}</span>
+        <div class="ds-cards">
+            <div class="ds-card ds-blue">
+                <div class="ds-card-title">Total Orders</div>
+                <div class="ds-card-value">${rows.length}</div>
             </div>
-            <div style="flex:1; border:1px solid #eee; padding:8px;"><strong>Total Balance:</strong> Rs ${totalBalance.toFixed(2)}</div>
-        </div>
-        <div style="display:flex; gap:10px; font-size:12px; margin-bottom:10px;">
-            <div style="flex:1; border:1px solid #eee; padding:8px;">
-                <strong>Expenses:</strong> Rs ${expTotal.toFixed(2)}<br>
-                <span style="color:#555; font-size:11px;">Cash: ${expCash.toFixed(2)} | UPI: ${expUpi.toFixed(2)} | Card/Bank: ${expBank.toFixed(2)}</span>
+            <div class="ds-card ds-purple">
+                <div class="ds-card-title">Total Amount</div>
+                <div class="ds-card-value">Rs ${totalAmount.toFixed(2)}</div>
             </div>
-            <div style="flex:1; border:1px solid #eee; padding:8px;">
-                <strong>Net Collected (Paid - Expenses):</strong> Rs ${netPaid.toFixed(2)}
+            <div class="ds-card ds-green">
+                <div class="ds-card-title">Total Paid</div>
+                <div class="ds-card-value">Rs ${totalPaid.toFixed(2)}</div>
+                <div class="ds-card-sub">Cash: ${totalCash.toFixed(2)} | UPI: ${totalUpi.toFixed(2)} | Card/Bank: ${totalBank.toFixed(2)}</div>
             </div>
-            <div style="flex:1; border:1px solid #eee; padding:8px;">
-                <strong>Net In Hand:</strong><br>
-                <span style="color:#555; font-size:11px;">Cash: ${netCash.toFixed(2)} | UPI: ${netUpi.toFixed(2)} | Card/Bank: ${netBank.toFixed(2)}</span>
+            <div class="ds-card ds-amber">
+                <div class="ds-card-title">Total Balance</div>
+                <div class="ds-card-value">Rs ${totalBalance.toFixed(2)}</div>
+            </div>
+            <div class="ds-card ds-red">
+                <div class="ds-card-title">Expenses</div>
+                <div class="ds-card-value">Rs ${expTotal.toFixed(2)}</div>
+                <div class="ds-card-sub">Cash: ${expCash.toFixed(2)} | UPI: ${expUpi.toFixed(2)} | Card/Bank: ${expBank.toFixed(2)}</div>
+            </div>
+            <div class="ds-card ds-teal">
+                <div class="ds-card-title">Net Collected (Paid - Expenses)</div>
+                <div class="ds-card-value">Rs ${netPaid.toFixed(2)}</div>
+            </div>
+            <div class="ds-card ds-slate">
+                <div class="ds-card-title">Net In Hand</div>
+                <div class="ds-card-value">Cash: ${netCash.toFixed(2)}</div>
+                <div class="ds-card-sub">UPI: ${netUpi.toFixed(2)} | Card/Bank: ${netBank.toFixed(2)}</div>
             </div>
         </div>
     `;
@@ -4116,7 +4169,7 @@ function buildDailyStatement() {
             <td>${formatOrderNoShort(r)}</td>
             <td>${r.name}</td>
             <td>${r.phone}</td>
-            <td style="text-align:center;">${r.status}</td>
+            <td style="text-align:center;">${r.status ? `<span class="ds-badge ${r.status.toLowerCase()}">${r.status}</span>` : ''}</td>
             <td style="text-align:right;">${r.amount.toFixed(2)}</td>
             <td style="text-align:right;">${r.paid.toFixed(2)}</td>
             <td style="text-align:right;">
@@ -4146,20 +4199,21 @@ function buildDailyStatement() {
     `).join('');
 
     const ordersTableHtml = rows.length ? `
-        <table style="width:100%; border-collapse:collapse; font-size:12px; margin-bottom:16px;">
+        <div class="ds-section-title">Sales</div>
+        <table class="ds-table" style="margin-bottom:16px;">
             <thead>
                 <tr style="background:#f4f4f4;">
-                    <th style="border:1px solid #ccc; padding:6px;">#</th>
-                    <th style="border:1px solid #ccc; padding:6px;">Date</th>
-                    <th style="border:1px solid #ccc; padding:6px;">Order No</th>
-                    <th style="border:1px solid #ccc; padding:6px;">Customer</th>
-                    <th style="border:1px solid #ccc; padding:6px;">Phone</th>
-                    <th style="border:1px solid #ccc; padding:6px;">Status</th>
-                    <th style="border:1px solid #ccc; padding:6px; text-align:right;">Amount</th>
-                    <th style="border:1px solid #ccc; padding:6px; text-align:right;">Paid</th>
-                    <th style="border:1px solid #ccc; padding:6px; text-align:right;">Paid Split</th>
-                    <th style="border:1px solid #ccc; padding:6px; text-align:right;">Balance</th>
-                    <th style="border:1px solid #ccc; padding:6px; text-align:left;">Payment History</th>
+                    <th style="padding:6px;">#</th>
+                    <th style="padding:6px;">Date</th>
+                    <th style="padding:6px;">Order No</th>
+                    <th style="padding:6px;">Customer</th>
+                    <th style="padding:6px;">Phone</th>
+                    <th style="padding:6px;">Status</th>
+                    <th style="padding:6px; text-align:right;">Amount</th>
+                    <th style="padding:6px; text-align:right;">Paid</th>
+                    <th style="padding:6px; text-align:right;">Paid Split</th>
+                    <th style="padding:6px; text-align:right;">Balance</th>
+                    <th style="padding:6px; text-align:left;">Payment History</th>
                 </tr>
             </thead>
             <tbody>
@@ -4169,15 +4223,15 @@ function buildDailyStatement() {
     ` : `<div style="padding:10px; font-size:12px; color:#777;">No sales found in this date range.</div>`;
 
     const expensesTableHtml = expenseRows.length ? `
-        <div style="margin-top:10px; font-weight:bold; font-size:13px;">Expenses</div>
-        <table style="width:100%; border-collapse:collapse; font-size:12px;">
+        <div class="ds-section-title">Expenses</div>
+        <table class="ds-table">
             <thead>
                 <tr style="background:#f4f4f4;">
-                    <th style="border:1px solid #ccc; padding:6px;">#</th>
-                    <th style="border:1px solid #ccc; padding:6px;">Date</th>
-                    <th style="border:1px solid #ccc; padding:6px;">Description</th>
-                    <th style="border:1px solid #ccc; padding:6px; text-align:right;">Amount</th>
-                    <th style="border:1px solid #ccc; padding:6px; text-align:center;">Mode</th>
+                    <th style="padding:6px;">#</th>
+                    <th style="padding:6px;">Date</th>
+                    <th style="padding:6px;">Description</th>
+                    <th style="padding:6px; text-align:right;">Amount</th>
+                    <th style="padding:6px; text-align:center;">Mode</th>
                 </tr>
             </thead>
             <tbody>
