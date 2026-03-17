@@ -3328,11 +3328,13 @@ function saveExpense() {
     const date = document.getElementById('expenseDate').value;
     const desc = document.getElementById('eDesc').value;
     const amount = parseFloat(document.getElementById('eAmount').value);
+    const modeEl = document.querySelector('input[name="eMode"]:checked');
+    const mode = modeEl ? modeEl.value : 'cash';
 
     if(!desc || !amount) { alert("Fill all details"); return; }
 
     const expenses = JSON.parse(localStorage.getItem('optixExpenses')) || [];
-    expenses.push({ date: date || new Date().toISOString().split('T')[0], desc: desc, amount: amount });
+    expenses.push({ date: date || new Date().toISOString().split('T')[0], desc: desc, amount: amount, mode: mode });
     localStorage.setItem('optixExpenses', JSON.stringify(expenses));
 
     alert("Expense Added");
@@ -3348,8 +3350,9 @@ function loadExpenses() {
     let total = 0;
 
     expenses.reverse().forEach(e => {
-        total += parseFloat(e.amount);
-        tbody.insertAdjacentHTML('beforeend', `<tr><td>${e.date}</td><td>${e.desc}</td><td>${e.amount}</td></tr>`);
+        const amt = parseFloat(e.amount) || 0;
+        total += amt;
+        tbody.insertAdjacentHTML('beforeend', `<tr><td>${e.date}</td><td>${e.desc}</td><td>${amt.toFixed(2)}</td><td>${e.mode || '-'}</td></tr>`);
     });
     
     if(document.getElementById('totalExp')) document.getElementById('totalExp').innerText = total.toFixed(2);
@@ -3996,12 +3999,16 @@ function buildDailyStatement() {
     lastStatementRange = { from, to };
 
     const orders = JSON.parse(localStorage.getItem('optixOrders')) || [];
+    const expenses = JSON.parse(localStorage.getItem('optixExpenses')) || [];
     const rows = [];
     let totalAmount = 0;
     let totalPaid = 0;
     let totalCash = 0;
     let totalUpi = 0;
     let totalBank = 0;
+    let expCash = 0;
+    let expUpi = 0;
+    let expBank = 0;
 
     const formatTsShort = (ts) => {
         const d = new Date(ts);
@@ -4047,6 +4054,22 @@ function buildDailyStatement() {
         });
     });
 
+    expenses.forEach(e => {
+        const expDate = toLocalDateStr(new Date(e.date));
+        if (expDate < from || expDate > to) return;
+        const amt = parseFloat(e.amount) || 0;
+        const mode = (e.mode || 'cash').toLowerCase();
+        if (mode === 'upi') expUpi += amt;
+        else if (mode === 'bank' || mode === 'card') expBank += amt;
+        else expCash += amt;
+    });
+
+    const expTotal = expCash + expUpi + expBank;
+    const netPaid = totalPaid - expTotal;
+    const netCash = totalCash - expCash;
+    const netUpi = totalUpi - expUpi;
+    const netBank = totalBank - expBank;
+
     const totalBalance = totalAmount - totalPaid;
 
     const headerHtml = `
@@ -4064,10 +4087,23 @@ function buildDailyStatement() {
             </div>
             <div style="flex:1; border:1px solid #eee; padding:8px;"><strong>Total Balance:</strong> Rs ${totalBalance.toFixed(2)}</div>
         </div>
+        <div style="display:flex; gap:10px; font-size:12px; margin-bottom:10px;">
+            <div style="flex:1; border:1px solid #eee; padding:8px;">
+                <strong>Expenses:</strong> Rs ${expTotal.toFixed(2)}<br>
+                <span style="color:#555; font-size:11px;">Cash: ${expCash.toFixed(2)} | UPI: ${expUpi.toFixed(2)} | Card/Bank: ${expBank.toFixed(2)}</span>
+            </div>
+            <div style="flex:1; border:1px solid #eee; padding:8px;">
+                <strong>Net Collected (Paid - Expenses):</strong> Rs ${netPaid.toFixed(2)}
+            </div>
+            <div style="flex:1; border:1px solid #eee; padding:8px;">
+                <strong>Net In Hand:</strong><br>
+                <span style="color:#555; font-size:11px;">Cash: ${netCash.toFixed(2)} | UPI: ${netUpi.toFixed(2)} | Card/Bank: ${netBank.toFixed(2)}</span>
+            </div>
+        </div>
     `;
 
     if (rows.length === 0) {
-        container.innerHTML = headerHtml + `<div style="padding:10px; font-size:12px; color:#777;">No confirmed sales found in this date range.</div>`;
+        container.innerHTML = headerHtml + `<div style="padding:10px; font-size:12px; color:#777;">No sales found in this date range.</div>`;
         return;
     }
 
