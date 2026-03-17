@@ -4016,7 +4016,6 @@ function buildDailyStatement() {
 
     orders.forEach(o => {
         const status = o.status || "Pending";
-        if (status !== "Confirmed") return;
         const orderDate = toLocalDateStr(new Date(o.date));
         if (orderDate < from || orderDate > to) return;
 
@@ -4043,6 +4042,7 @@ function buildDailyStatement() {
             paidCash,
             paidUpi,
             paidBank,
+            status,
             history: Array.isArray(o.paymentHistory) ? o.paymentHistory : []
         });
     });
@@ -4078,6 +4078,7 @@ function buildDailyStatement() {
             <td>${formatOrderNoShort(r)}</td>
             <td>${r.name}</td>
             <td>${r.phone}</td>
+            <td style="text-align:center;">${r.status}</td>
             <td style="text-align:right;">${r.amount.toFixed(2)}</td>
             <td style="text-align:right;">${r.paid.toFixed(2)}</td>
             <td style="text-align:right;">
@@ -4105,6 +4106,7 @@ function buildDailyStatement() {
                     <th style="border:1px solid #ccc; padding:6px;">Order No</th>
                     <th style="border:1px solid #ccc; padding:6px;">Customer</th>
                     <th style="border:1px solid #ccc; padding:6px;">Phone</th>
+                    <th style="border:1px solid #ccc; padding:6px;">Status</th>
                     <th style="border:1px solid #ccc; padding:6px; text-align:right;">Amount</th>
                     <th style="border:1px solid #ccc; padding:6px; text-align:right;">Paid</th>
                     <th style="border:1px solid #ccc; padding:6px; text-align:right;">Paid Split</th>
