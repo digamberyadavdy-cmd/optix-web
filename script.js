@@ -1532,97 +1532,105 @@ function loadAccounts() {
 }
 
 function loadDashboard() {
-    // 1. Get Current Date Info
-    const now = new Date();
-    const todayStr = now.toISOString().split('T')[0]; // Format: YYYY-MM-DD
-    const currentMonth = now.getMonth(); // 0-11
-    const currentYear = now.getFullYear();
+    try {
+        // 1. Get Current Date Info
+        const now = new Date();
+        const todayStr = now.toISOString().split('T')[0]; // Format: YYYY-MM-DD
+        const currentMonth = now.getMonth(); // 0-11
+        const currentYear = now.getFullYear();
 
-    const num = (v) => {
-        if (typeof v === 'number' && !isNaN(v)) return v;
-        const cleaned = String(v || '').replace(/[^0-9.\-]/g, '');
-        const n = parseFloat(cleaned);
-        return isNaN(n) ? 0 : n;
-    };
+        const num = (v) => {
+            if (typeof v === 'number' && !isNaN(v)) return v;
+            const cleaned = String(v || '').replace(/[^0-9.\-]/g, '');
+            const n = parseFloat(cleaned);
+            return isNaN(n) ? 0 : n;
+        };
 
-    // 2. Fetch Data from LocalStorage
-    const orders = JSON.parse(localStorage.getItem('optixOrders')) || [];
-    const expenses = JSON.parse(localStorage.getItem('optixExpenses')) || [];
+        // 2. Fetch Data from LocalStorage
+        const orders = JSON.parse(localStorage.getItem('optixOrders')) || [];
+        const expenses = JSON.parse(localStorage.getItem('optixExpenses')) || [];
 
-    // 3. Initialize Counters
-    let todaySales = 0;
-    let monthSales = 0;
-    let totalPending = 0;
-    let monthBillCount = 0;
-    let todayExpense = 0;
+        // 3. Initialize Counters
+        let todaySales = 0;
+        let monthSales = 0;
+        let totalPending = 0;
+        let pendingCount = 0;
+        let monthBillCount = 0;
+        let todayExpense = 0;
 
-    // 4. Calculate Order Stats
-    orders.forEach(o => {
-        const oDate = new Date(o.date);
-        const oDateStr = oDate.toISOString().split('T')[0];
+        // 4. Calculate Order Stats
+        orders.forEach(o => {
+            const oDate = new Date(o.date);
+            const validDate = !isNaN(oDate.getTime());
+            const oDateStr = validDate ? oDate.toISOString().split('T')[0] : null;
 
-        // Pending Balance (only positive, skip cancelled)
-        const amount = num(o.amount);
-        const paid = num(o.paid);
-        const balance = amount - paid;
-        const status = (o.status || "").toLowerCase();
-        if (balance > 0 && status !== "cancelled") {
-            totalPending += balance;
-            pendingCount += 1;
-        }
+            // Pending Balance (only positive, skip cancelled)
+            const amount = num(o.amount);
+            const paid = num(o.paid);
+            const balance = amount - paid;
+            const status = (o.status || "").toLowerCase();
+            if (balance > 0 && status !== "cancelled") {
+                totalPending += balance;
+                pendingCount += 1;
+            }
 
-        // Today's Sales
-        if (oDateStr === todayStr) {
-            todaySales += amount;
-        }
+            // Today's Sales
+            if (validDate && oDateStr === todayStr) {
+                todaySales += amount;
+            }
 
-        // This Month's Data
-        if (oDate.getMonth() === currentMonth && oDate.getFullYear() === currentYear) {
-            monthSales += amount;
-            monthBillCount++;
-        }
-    });
+            // This Month's Data
+            if (validDate && oDate.getMonth() === currentMonth && oDate.getFullYear() === currentYear) {
+                monthSales += amount;
+                monthBillCount++;
+            }
+        });
 
-    // 5. Calculate Expense Stats (Today Only)
-    expenses.forEach(e => {
-        // Assuming expense object has a 'date' and 'amount'
-        if (e.date === todayStr) {
-            todayExpense += parseFloat(e.amount) || 0;
-        }
-    });
+        // 5. Calculate Expense Stats (Today Only)
+        expenses.forEach(e => {
+            if (e.date === todayStr) {
+                todayExpense += num(e.amount);
+            }
+        });
 
     // 6. Update the HTML Elements
     // Pending Task Panel
-    const pendingValEl = document.getElementById('dash-pending-val');
-    const pendingBalEl = document.getElementById('dash-pending-balance');
-    const pendingCountEl = document.getElementById('dash-pending-count');
-    if(pendingValEl) {
-        pendingValEl.innerText = "Rs " + totalPending.toFixed(2);
-        pendingValEl.style.color = totalPending > 0 ? "red" : "green";
-    }
-    if(pendingBalEl) {
-        pendingBalEl.innerText = "Rs " + totalPending.toFixed(2);
-        pendingBalEl.style.color = totalPending > 0 ? "red" : "green";
-    }
+        const pendingValEl = document.getElementById('dash-pending-val');
+        const pendingBalEl = document.getElementById('dash-pending-balance');
+        const pendingCountEl = document.getElementById('dash-pending-count');
+        if(pendingValEl) {
+            pendingValEl.innerText = "Rs " + totalPending.toFixed(2);
+            pendingValEl.style.color = totalPending > 0 ? "red" : "green";
+        }
+        if(pendingBalEl) {
+            pendingBalEl.innerText = "Rs " + totalPending.toFixed(2);
+            pendingBalEl.style.color = totalPending > 0 ? "red" : "green";
+        }
+        if(pendingCountEl) {
+            pendingCountEl.innerText = pendingCount;
+            pendingCountEl.style.color = pendingCount > 0 ? "red" : "green";
+        }
     if(pendingCountEl) {
         pendingCountEl.innerText = pendingCount;
         pendingCountEl.style.color = pendingCount > 0 ? "red" : "green";
     }
 
     // Today's Data Panel
-    if(document.getElementById('dash-today-sales')) {
-        document.getElementById('dash-today-sales').innerText = "Rs " + todaySales.toFixed(2);
-    }
-    if(document.getElementById('dash-expenses')) {
-        document.getElementById('dash-expenses').innerText = "Rs " + todayExpense.toFixed(2);
-    }
+        if(document.getElementById('dash-today-sales')) {
+            document.getElementById('dash-today-sales').innerText = "Rs " + todaySales.toFixed(2);
+        }
+        if(document.getElementById('dash-expenses')) {
+            document.getElementById('dash-expenses').innerText = "Rs " + todayExpense.toFixed(2);
+        }
 
-    // This Month Data Panel
-    if(document.getElementById('dash-total-sales')) {
-        document.getElementById('dash-total-sales').innerText = "Rs " + monthSales.toFixed(2);
-    }
-    if(document.getElementById('dash-bill-count')) {
-        document.getElementById('dash-bill-count').innerText = monthBillCount;
+        if(document.getElementById('dash-total-sales')) {
+            document.getElementById('dash-total-sales').innerText = "Rs " + monthSales.toFixed(2);
+        }
+        if(document.getElementById('dash-bill-count')) {
+            document.getElementById('dash-bill-count').innerText = monthBillCount;
+        }
+    } catch (err) {
+        console.error('loadDashboard error', err);
     }
     // --- BIRTHDAY LOGIC START ---
     const customers = JSON.parse(localStorage.getItem('optixCustomers')) || [];
