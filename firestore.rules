@@ -27,6 +27,12 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // Products collection (legacy, not under /stores)
+    match /products/{docId} {
+      allow read: if isAdmin() || (isSignedIn() && resource.data.storeId == userStore());
+      allow write: if isAdmin() || (isSignedIn() && request.resource.data.storeId == userStore());
+    }
+
     // Tenant data: structure stores/{storeId}/...
     match /stores/{storeId}/{collection}/{docId} {
       allow read, write: if isSignedIn() && (isAdmin() || userStore() == storeId);

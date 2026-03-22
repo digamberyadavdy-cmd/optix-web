@@ -43,6 +43,10 @@ function enforceAccessGate(firebaseSignedIn) {
     }
 }
 
+function currentStoreId() {
+    return localStorage.getItem('optixStoreId') || sessionStorage.getItem('optixStoreId') || null;
+}
+
 function initAuthGatekeeper() {
     if (typeof firebase === 'undefined' || !firebase.auth) {
         enforceAccessGate(false);
@@ -920,12 +924,16 @@ function generateBarcode() {
 
 async function saveProductToCloud(productData) {
     if (!db) throw new Error("Firestore not initialized");
-    const ref = await db.collection("products").add(productData);
+    const storeId = currentStoreId();
+    if (!storeId) throw new Error("Missing store ID for cloud save");
+    const ref = await db.collection("products").add({ ...productData, storeId });
     return { ...productData, _docId: ref.id };
 }
 
 async function ensureProductsCache() {
-    const cached = JSON.parse(localStorage.getItem('optixProducts')) || [];
+    const storeId = currentStoreId();
+    const cachedAll = JSON.parse(localStorage.getItem('optixProducts')) || [];
+    const cached = storeId ? cachedAll.filter(p => p.storeId === storeId) : [];
     if (cached.length > 0) return cached;
     if (!db) return cached;
     try {
@@ -939,7 +947,9 @@ async function ensureProductsCache() {
 
 async function loadProductsFromCloud() {
     if (!db) return null;
-    const snapshot = await db.collection("products").get();
+    const storeId = currentStoreId();
+    if (!storeId) return [];
+    const snapshot = await db.collection("products").where("storeId", "==", storeId).get();
     const products = [];
     snapshot.forEach((doc) => {
         products.push({ ...doc.data(), _docId: doc.id });
@@ -957,7 +967,9 @@ function refreshProductDrivenViews() {
 function subscribeProductsRealtime() {
     if (!db || productsRealtimeSubscribed) return;
     productsRealtimeSubscribed = true;
-    db.collection("products").onSnapshot((snapshot) => {
+    const storeId = currentStoreId();
+    if (!storeId) return;
+    db.collection("products").where("storeId", "==", storeId).onSnapshot((snapshot) => {
         const products = [];
         snapshot.forEach((doc) => {
             products.push({ ...doc.data(), _docId: doc.id });
