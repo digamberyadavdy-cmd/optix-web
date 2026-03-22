@@ -72,6 +72,7 @@ document.addEventListener("DOMContentLoaded", () => {
         applySettings();
         ensureSettingsModal();
         bindSettingsIcon();
+        populateLoginBranchField();
         if(document.getElementById('rxDate')) {
             initPrescriptionDate();
             bindPrescriptionCalcs();
@@ -871,6 +872,29 @@ function resetAllData() {
     window.location.href = 'login.html';
 }
 
+function branchNameToStoreId(name) {
+    const raw = (name || '').trim().toLowerCase();
+    if (!raw) return 'default';
+    const slug = raw.replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+    return slug || 'default';
+}
+
+function getLoginBranchId() {
+    const select = document.getElementById('loginBranchSelect');
+    if (select && select.value) return select.value;
+    const settings = getSettings();
+    return branchNameToStoreId(settings.branchName || 'Main Branch');
+}
+
+function populateLoginBranchField() {
+    const select = document.getElementById('loginBranchSelect');
+    if (!select) return;
+    const settings = getSettings();
+    const branchName = settings.branchName || 'Main Branch';
+    const branchId = branchNameToStoreId(branchName);
+    select.innerHTML = `<option value="${branchId}">${branchName}</option>`;
+}
+
 async function performLogin() {
     const user = document.getElementById('loginUser').value;
     const pass = document.getElementById('loginPass').value;
@@ -888,7 +912,7 @@ async function performLogin() {
             console.error("Firebase login failed; using local session.", err);
         }
         // Use a default store to keep store-scoped queries working
-        const defaultStore = 'default';
+        const defaultStore = getLoginBranchId();
         localStorage.setItem('optixStoreId', defaultStore);
         sessionStorage.setItem('optixStoreId', defaultStore);
 

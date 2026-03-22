@@ -34,7 +34,16 @@
             width: 100%; padding: 12px 12px 12px 40px; border: 1px solid #ddd;
             border-radius: 5px; font-size: 15px; box-sizing: border-box; transition: 0.3s;
         }
-        .input-group input:focus { border-color: #2563eb; outline: none; box-shadow: 0 0 0 3px rgba(37,99,235,0.1); }
+        .input-group input:focus,
+        .input-group select:focus { border-color: #2563eb; outline: none; box-shadow: 0 0 0 3px rgba(37,99,235,0.1); }
+        .input-group select {
+            width: 100%; padding: 12px 12px 12px 40px; border: 1px solid #ddd;
+            border-radius: 5px; font-size: 15px; box-sizing: border-box; transition: 0.3s;
+            background: #fff;
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            appearance: none;
+        }
 
         .btn-login {
             width: 100%; padding: 12px; background: #2563eb; color: white; border: none;
@@ -66,6 +75,11 @@
             <input type="password" id="loginPass" placeholder="Password">
         </div>
 
+        <div class="input-group">
+            <i class="fas fa-building"></i>
+            <select id="loginBranchSelect"></select>
+        </div>
+
         <button class="btn-login" onclick="performLogin()">SECURE LOGIN</button>
         <div id="loginError" class="error-msg">❌ Invalid Username or Password</div>
 
@@ -75,13 +89,13 @@
         </div>
     </div>
 
-    <script src="script.js?v=cachefix2"></script>
-    <script>
-        // Check if already logged in, redirect to dashboard
-        if(localStorage.getItem('optixLoggedIn') === 'true' || sessionStorage.getItem('optixLoggedIn') === 'true') {
-            window.location.href = 'dashboard.html';
-        }
-    </script>
+        <script src="script.js?v=cachefix2"></script>
+        <script>
+            // Check if already logged in, redirect to dashboard
+            if(localStorage.getItem('optixLoggedIn') === 'true' || sessionStorage.getItem('optixLoggedIn') === 'true') {
+                window.location.href = 'dashboard.html';
+            }
+        </script>
 </body>
 </html>
 
