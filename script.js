@@ -1639,6 +1639,131 @@ function loadDashboard() {
     } catch (err) {
         console.error('loadDashboard error', err);
     }
+
+    // --- Recompute dashboard metrics (robust parsing) ---
+    try {
+        const num = (v) => {
+            if (typeof v === 'number' && !isNaN(v)) return v;
+            const cleaned = String(v || '').replace(/[^0-9.\-]/g, '');
+            const n = parseFloat(cleaned);
+            return isNaN(n) ? 0 : n;
+        };
+        const parseDateLoose = (val) => {
+            if (!val) return null;
+            if (val instanceof Date && !isNaN(val)) return val;
+            const d = new Date(val);
+            if (!isNaN(d)) return d;
+            const m = String(val).match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/);
+            if (m) {
+                let dd = m[1].padStart(2, '0');
+                let mm = m[2].padStart(2, '0');
+                let yy = m[3].length === 2 ? '20' + m[3] : m[3];
+                return new Date(`${yy}-${mm}-${dd}`);
+            }
+            return null;
+        };
+
+        const now = new Date();
+        const todayStr = now.toISOString().split('T')[0];
+        const currentMonth = now.getMonth();
+        const currentYear = now.getFullYear();
+
+        const orders = JSON.parse(localStorage.getItem('optixOrders')) || [];
+        const expenses = JSON.parse(localStorage.getItem('optixExpenses')) || [];
+        const prescriptions = JSON.parse(localStorage.getItem('optixPrescriptions')) || [];
+
+        let todaySales = 0;
+        let todayCollection = 0;
+        let monthSales = 0;
+        let totalPending = 0;
+        let pendingCount = 0;
+        let monthBillCount = 0;
+        let todayExpense = 0;
+        let todayEyeTests = 0;
+
+        orders.forEach(o => {
+            const oDate = parseDateLoose(o.date);
+            const validDate = oDate && !isNaN(oDate.getTime());
+            const oDateStr = validDate ? oDate.toISOString().split('T')[0] : null;
+
+            const amount = num(o.amount);
+            const paid = num(o.paid);
+            const balance = amount - paid;
+            const status = (o.status || "").toLowerCase();
+            if (balance > 0 && status !== "cancelled") {
+                totalPending += balance;
+                pendingCount += 1;
+            }
+            if (validDate && oDateStr === todayStr) {
+                todaySales += amount;
+                todayCollection += paid;
+            }
+            if (validDate && oDate.getMonth() === currentMonth && oDate.getFullYear() === currentYear) {
+                monthSales += amount;
+                monthBillCount++;
+            }
+        });
+
+        expenses.forEach(e => {
+            const eDate = parseDateLoose(e.date);
+            const validDate = eDate && !isNaN(eDate.getTime());
+            const eDateStr = validDate ? eDate.toISOString().split('T')[0] : null;
+            if (eDateStr === todayStr) {
+                todayExpense += num(e.amount);
+            }
+        });
+
+        prescriptions.forEach(rx => {
+            const rxDate = parseDateLoose(rx.rxDate || rx.rxDateTime);
+            const validDate = rxDate && !isNaN(rxDate.getTime());
+            const rxStr = validDate ? rxDate.toISOString().split('T')[0] : null;
+            if (rxStr === todayStr) todayEyeTests += 1;
+        });
+
+        const pendingValEl = document.getElementById('dash-pending-val');
+        const pendingBalEl = document.getElementById('dash-pending-balance');
+        const pendingCountEl = document.getElementById('dash-pending-count');
+        if(pendingValEl) {
+            pendingValEl.innerText = "Rs " + totalPending.toFixed(2);
+            pendingValEl.style.color = totalPending > 0 ? "red" : "green";
+        }
+        if(pendingBalEl) {
+            pendingBalEl.innerText = "Rs " + totalPending.toFixed(2);
+            pendingBalEl.style.color = totalPending > 0 ? "red" : "green";
+        }
+        if(pendingCountEl) {
+            pendingCountEl.innerText = pendingCount;
+            pendingCountEl.style.color = pendingCount > 0 ? "red" : "green";
+        }
+
+        const colEl = document.getElementById('dash-collection');
+        if(colEl) {
+            colEl.innerText = "Rs " + todayCollection.toFixed(2);
+            colEl.style.color = todayCollection > 0 ? "green" : "red";
+        }
+
+        if(document.getElementById('dash-today-sales')) {
+            document.getElementById('dash-today-sales').innerText = "Rs " + todaySales.toFixed(2);
+        }
+        if(document.getElementById('dash-expenses')) {
+            document.getElementById('dash-expenses').innerText = "Rs " + todayExpense.toFixed(2);
+        }
+        const eyeEl = document.getElementById('dash-eye-tests');
+        if (eyeEl) {
+            eyeEl.innerText = todayEyeTests;
+            eyeEl.style.color = todayEyeTests > 0 ? "green" : "red";
+        }
+
+        if(document.getElementById('dash-total-sales')) {
+            document.getElementById('dash-total-sales').innerText = "Rs " + monthSales.toFixed(2);
+        }
+        if(document.getElementById('dash-bill-count')) {
+            document.getElementById('dash-bill-count').innerText = monthBillCount;
+        }
+    } catch (err) {
+        console.error('loadDashboard recompute error', err);
+    }
+
     // --- BIRTHDAY LOGIC START ---
     const customers = JSON.parse(localStorage.getItem('optixCustomers')) || [];
     const birthdayListEl = document.getElementById('birthday-list');
