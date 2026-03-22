@@ -834,57 +834,35 @@ function resetAllData() {
 }
 
 async function performLogin() {
-    const storeInput = (document.getElementById('loginStore')?.value || '').trim();
-    const user = (document.getElementById('loginUser').value || '').trim();
+    const user = document.getElementById('loginUser').value;
     const pass = document.getElementById('loginPass').value;
     const errorMsg = document.getElementById('loginError');
 
-    const showError = (msg) => {
-        if (errorMsg) {
-            errorMsg.innerText = msg;
-            errorMsg.style.display = 'block';
-        }
-    };
-
-    if (!user || !pass) {
-        showError("Please enter email and password.");
-        return;
-    }
-
-    try {
-        if (!firebase?.auth) throw new Error("Firebase Auth not loaded on this page.");
-        const cred = await firebase.auth().signInWithEmailAndPassword(user, pass);
-        const uid = cred.user?.uid;
-
-        let storeId = storeInput;
-        if (db && uid) {
-            const userDoc = await db.collection('users').doc(uid).get();
-            if (userDoc.exists) {
-                const data = userDoc.data() || {};
-                storeId = data.storeId || storeId;
-                if (data.role) {
-                    localStorage.setItem('optixUserRole', data.role);
-                    sessionStorage.setItem('optixUserRole', data.role);
-                }
+    // --- SET YOUR PASSWORD HERE ---
+    // Currently set to: admin / admin123
+    if (user === "admin" && pass === "admin123") {
+        try {
+            if (typeof firebase !== 'undefined' && firebase.auth) {
+                const auth = firebase.auth();
+                if (!auth.currentUser) await auth.signInAnonymously();
             }
+        } catch (err) {
+            console.error("Firebase login failed; using local session.", err);
         }
-
-        if (!storeId) {
-            showError("Store ID is not set for this user. Ask admin to set storeId in Firestore.");
-            await firebase.auth().signOut();
-            return;
-        }
+        // Use a default store to keep store-scoped queries working
+        const defaultStore = 'default';
+        localStorage.setItem('optixStoreId', defaultStore);
+        sessionStorage.setItem('optixStoreId', defaultStore);
 
         localStorage.setItem('optixLoggedIn', 'true');
         sessionStorage.setItem('optixLoggedIn', 'true');
-        localStorage.setItem('optixStoreId', storeId);
-        sessionStorage.setItem('optixStoreId', storeId);
-        localStorage.setItem('optixUserEmail', user);
         localStorage.setItem('optixSessionStart', new Date().toISOString());
         window.location.href = 'dashboard.html';
-    } catch (err) {
-        console.error("Login failed:", err);
-        showError(err?.message ? `❌ ${err.message}` : "❌ Invalid Username or Password");
+    } else {
+        if (errorMsg) {
+            errorMsg.innerText = "❌ Invalid Username or Password";
+            errorMsg.style.display = 'block';
+        }
         const card = document.querySelector('.login-card');
         if (card) {
             card.style.transform = "translateX(5px)";
