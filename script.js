@@ -67,38 +67,39 @@ document.addEventListener("DOMContentLoaded", () => {
     initFirebaseServices();
     initAuthGatekeeper();
     initCloudSync().then(async () => {
-    await ensureProductsCache();
-    applySettings();
-    ensureSettingsModal();
-    bindSettingsIcon();
-    if(document.getElementById('rxDate')) {
-        initPrescriptionDate();
-        bindPrescriptionCalcs();
-    }
-    // 1. Initial Checks for Order Page
-    const today = new Date().toISOString().split('T')[0];
-    if(document.getElementById('orderDate')) document.getElementById('orderDate').value = today;
-    if(document.getElementById('deliveryDate')) document.getElementById('deliveryDate').value = today;
-    
-    // Auto-add first row if on Order Page
-    if(document.getElementById('billTableBody')) {
-        const tbody = document.getElementById('billTableBody');
-        if(tbody.children.length === 0) addNewRow();
-    }
+        await hydrateEssentialEntityDocs();
+        await ensureProductsCache();
+        applySettings();
+        ensureSettingsModal();
+        bindSettingsIcon();
+        if(document.getElementById('rxDate')) {
+            initPrescriptionDate();
+            bindPrescriptionCalcs();
+        }
+        // 1. Initial Checks for Order Page
+        const today = new Date().toISOString().split('T')[0];
+        if(document.getElementById('orderDate')) document.getElementById('orderDate').value = today;
+        if(document.getElementById('deliveryDate')) document.getElementById('deliveryDate').value = today;
+        
+        // Auto-add first row if on Order Page
+        if(document.getElementById('billTableBody')) {
+            const tbody = document.getElementById('billTableBody');
+            if(tbody.children.length === 0) addNewRow();
+        }
 
-    // 2. Page Loaders - CHECK AND RUN ALL
-    if(document.getElementById('dash-total-sales')) loadDashboard();
-    if(document.getElementById('productListBody')) loadProducts();
-    if(document.getElementById('inventoryListBody')) loadInventory();
-    if(document.getElementById('ledgerTable')) loadAccounts();
-    if(document.getElementById('salesHistoryBody')) loadSalesHistory();
-    
-    // NEW LOADERS ADDED
-    if(document.getElementById('staffList')) loadStaff();
-    if(document.getElementById('stockTable')) loadStock();
-    if(document.getElementById('customerTable')) loadCustomers();
-    if(document.getElementById('expenseList')) loadExpenses();
-    if(document.getElementById('settingsPage')) initSettingsPage();
+        // 2. Page Loaders - CHECK AND RUN ALL
+        if(document.getElementById('dash-total-sales')) loadDashboard();
+        if(document.getElementById('productListBody')) loadProducts();
+        if(document.getElementById('inventoryListBody')) loadInventory();
+        if(document.getElementById('ledgerTable')) loadAccounts();
+        if(document.getElementById('salesHistoryBody')) loadSalesHistory();
+        
+        // NEW LOADERS ADDED
+        if(document.getElementById('staffList')) loadStaff();
+        if(document.getElementById('stockTable')) loadStock();
+        if(document.getElementById('customerTable')) loadCustomers();
+        if(document.getElementById('expenseList')) loadExpenses();
+        if(document.getElementById('settingsPage')) initSettingsPage();
     }).catch((err) => {
         console.error("App init failed:", err);
     });
@@ -135,6 +136,43 @@ const ENTITY_DOC_COLLECTIONS = {
     optixPrescriptions: 'prescriptions_state',
     optixSettings: 'settings_state'
 };
+const ENTITY_ARRAY_KEYS = ['optixOrders', 'optixCustomers', 'optixExpenses', 'optixPrescriptions'];
+function shouldHydrateEntityArray(raw) {
+    if (!raw) return true;
+    const trimmed = raw.trim();
+    if (!trimmed) return true;
+    try {
+        const parsed = JSON.parse(trimmed);
+        if (Array.isArray(parsed)) {
+            return parsed.length === 0;
+        }
+        return false;
+    } catch {
+        return true;
+    }
+}
+
+async function hydrateEntityDocIfNeeded(key) {
+    if (!db || !ENTITY_DOC_COLLECTIONS[key]) return;
+    if (!shouldHydrateEntityArray(localStorage.getItem(key))) return;
+    try {
+        const snap = await db.collection(ENTITY_DOC_COLLECTIONS[key]).doc('main').get();
+        if (!snap.exists) return;
+        const data = snap.data() || {};
+        if (typeof data.value === 'string' && data.value.trim()) {
+            localStorage.setItem(key, data.value);
+        }
+    } catch (err) {
+        console.error(`Entity hydration failed for ${key}:`, err);
+    }
+}
+
+async function hydrateEssentialEntityDocs() {
+    if (!db) return;
+    for (const key of ENTITY_ARRAY_KEYS) {
+        await hydrateEntityDocIfNeeded(key);
+    }
+}
 let cloudSyncTimer = null;
 let cloudSyncBusy = false;
 let cloudApplyMode = false;
