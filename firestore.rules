@@ -1,0 +1,35 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function userStore() {
+      return request.auth != null && request.auth.token.storeId != null
+        ? request.auth.token.storeId
+        : null;
+    }
+
+    function isAdmin() {
+      return request.auth != null && request.auth.token.isAdmin == true;
+    }
+
+    // Admin console metadata
+    match /admin_stores/{storeId} {
+      allow read, write: if isAdmin();
+    }
+
+    // User profiles: admins can read/write, users can read their own
+    match /users/{uid} {
+      allow read: if isSignedIn() && (isAdmin() || uid == request.auth.uid);
+      allow write: if isAdmin();
+    }
+
+    // Tenant data: structure stores/{storeId}/...
+    match /stores/{storeId}/{collection}/{docId} {
+      allow read, write: if isSignedIn() && (isAdmin() || userStore() == storeId);
+    }
+  }
+}

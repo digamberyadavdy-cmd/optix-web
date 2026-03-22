@@ -4,7 +4,8 @@
     "ignore": [
       "firebase.json",
       "**/.*",
-      "**/node_modules/**"
+      "**/node_modules/**",
+      "**/.git/**"
     ],
     "redirects": [
       {
@@ -13,5 +14,8 @@
         "type": 302
       }
     ]
+  },
+  "firestore": {
+    "rules": "firestore.rules"
   }
 }

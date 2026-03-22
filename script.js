@@ -19,6 +19,18 @@ let productsRealtimeSubscribed = false;
 const path = window.location.pathname;
 const page = path.split("/").pop();
 
+// Prevent double-trigger on mobile (ghost/double taps)
+let __optixClickLock = false;
+document.addEventListener('click', (e) => {
+    if (__optixClickLock) {
+        e.stopPropagation();
+        e.preventDefault();
+        return;
+    }
+    __optixClickLock = true;
+    setTimeout(() => { __optixClickLock = false; }, 500);
+}, true);
+
 function enforceAccessGate(firebaseSignedIn) {
     const settingsGate = getSettings();
     const loginRequired = settingsGate.loginRequired !== false;
@@ -55,6 +67,10 @@ document.addEventListener("DOMContentLoaded", () => {
     applySettings();
     ensureSettingsModal();
     bindSettingsIcon();
+    if(document.getElementById('rxDate')) {
+        initPrescriptionDate();
+        bindPrescriptionCalcs();
+    }
     // 1. Initial Checks for Order Page
     const today = new Date().toISOString().split('T')[0];
     if(document.getElementById('orderDate')) document.getElementById('orderDate').value = today;
@@ -78,6 +94,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if(document.getElementById('stockTable')) loadStock();
     if(document.getElementById('customerTable')) loadCustomers();
     if(document.getElementById('expenseList')) loadExpenses();
+    if(document.getElementById('settingsPage')) initSettingsPage();
     }).catch((err) => {
         console.error("App init failed:", err);
     });
@@ -128,6 +145,20 @@ const entityDocQueue = new Map();
 let firestoreOnline = false;
 let firestoreLastError = "";
 
+function getDefaultActionConfig() {
+    return {
+        sendWhatsapp: true,
+        chatWhatsapp: true,
+        confirmOrder: true,
+        editOrder: true,
+        paymentHistory: true,
+        advanceReceipt: true,
+        finalInvoice: true,
+        viewRx: true,
+        deleteOrder: true
+    };
+}
+
 function getSettings() {
     const defaults = {
         loginRequired: true,
@@ -137,12 +168,18 @@ function getSettings() {
         enableDiscounts: true,
         cloudSyncEnabled: false,
         cloudSyncUrl: DEFAULT_CLOUD_SYNC_URL,
-        cloudSyncToken: ''
+        cloudSyncToken: '',
+        branchName: 'Cleandekho.com',
+        actionsConfig: getDefaultActionConfig()
     };
     try {
         const raw = localStorage.getItem('optixSettings');
         const parsed = raw ? JSON.parse(raw) : {};
-        return { ...defaults, ...parsed };
+        return {
+            ...defaults,
+            ...parsed,
+            actionsConfig: { ...getDefaultActionConfig(), ...(parsed.actionsConfig || {}) }
+        };
     } catch (e) {
         return { ...defaults };
     }
@@ -578,6 +615,16 @@ function applySettings() {
     }
 
     if (typeof calculateFinal === 'function') calculateFinal();
+    updateBranchUI();
+}
+
+function updateBranchUI() {
+    const s = getSettings();
+    const branchName = s.branchName || 'Main Branch';
+    const branchSelect = document.querySelector('.branch-select');
+    if (branchSelect) {
+        branchSelect.innerHTML = `<option>Select Branch : ${branchName}</option>`;
+    }
 }
 
 function injectSettingsStyles() {
@@ -689,12 +736,82 @@ async function saveSettingsFromModal() {
     if (!ok) alert("Saved locally, but cloud settings sync failed.");
 }
 
+function initSettingsPage() {
+    const s = getSettings();
+    const actions = s.actionsConfig || getDefaultActionConfig();
+    const set = (id, val) => { const el = document.getElementById(id); if (el) el.checked = !!val; };
+    const branchInput = document.getElementById('set_branch_name');
+    if (branchInput) branchInput.value = s.branchName || '';
+
+    set('set_page_show_whatsapp', s.showWhatsapp);
+    set('set_action_send', actions.sendWhatsapp);
+    set('set_action_chat', actions.chatWhatsapp);
+    set('set_action_confirm', actions.confirmOrder);
+    set('set_action_edit', actions.editOrder);
+    set('set_action_payment', actions.paymentHistory);
+    set('set_action_advance', actions.advanceReceipt);
+    set('set_action_invoice', actions.finalInvoice);
+    set('set_action_rx', actions.viewRx);
+    set('set_action_delete', actions.deleteOrder);
+
+    updateBranchUI();
+}
+
+function resetActionTogglesToDefault() {
+    const defaults = getDefaultActionConfig();
+    Object.entries(defaults).forEach(([key, val]) => {
+        const idMap = {
+            sendWhatsapp: 'set_action_send',
+            chatWhatsapp: 'set_action_chat',
+            confirmOrder: 'set_action_confirm',
+            editOrder: 'set_action_edit',
+            paymentHistory: 'set_action_payment',
+            advanceReceipt: 'set_action_advance',
+            finalInvoice: 'set_action_invoice',
+            viewRx: 'set_action_rx',
+            deleteOrder: 'set_action_delete'
+        };
+        const el = document.getElementById(idMap[key]);
+        if (el) el.checked = !!val;
+    });
+}
+
+async function saveSettingsPage() {
+    const s = getSettings();
+    const read = (id) => { const el = document.getElementById(id); return el ? el.checked : false; };
+    const branchName = (document.getElementById('set_branch_name')?.value || '').trim();
+    s.branchName = branchName || 'Main Branch';
+    s.showWhatsapp = read('set_page_show_whatsapp');
+
+    const actions = s.actionsConfig || getDefaultActionConfig();
+    actions.sendWhatsapp = read('set_action_send');
+    actions.chatWhatsapp = read('set_action_chat');
+    actions.confirmOrder = read('set_action_confirm');
+    actions.editOrder = read('set_action_edit');
+    actions.paymentHistory = read('set_action_payment');
+    actions.advanceReceipt = read('set_action_advance');
+    actions.finalInvoice = read('set_action_invoice');
+    actions.viewRx = read('set_action_rx');
+    actions.deleteOrder = read('set_action_delete');
+    s.actionsConfig = actions;
+
+    const ok = await saveSettings(s);
+    applySettings();
+    if (typeof loadPendingOrders === 'function') loadPendingOrders();
+    if (typeof loadSalesHistory === 'function') loadSalesHistory();
+    await flushFirestoreStateQueue();
+    scheduleCloudSync();
+    alert(ok ? "Settings saved." : "Saved locally, but cloud settings sync failed.");
+}
+
 function bindSettingsIcon() {
     document.querySelectorAll('.nav-icon.bg-purple, .fa-cog').forEach(el => {
         el.style.cursor = 'pointer';
         el.addEventListener('click', (e) => {
             e.preventDefault();
-            openSettingsModal();
+            if (page !== 'settings.html') {
+                window.location.href = 'settings.html';
+            }
         });
     });
 }
@@ -707,32 +824,63 @@ function resetAllData() {
     ];
     keys.forEach(k => localStorage.removeItem(k));
     localStorage.removeItem('optixLoggedIn');
+    localStorage.removeItem('optixStoreId');
     alert("All data cleared. The page will reload.");
     window.location.href = 'login.html';
 }
 
 async function performLogin() {
-    const user = document.getElementById('loginUser').value;
+    const storeInput = (document.getElementById('loginStore')?.value || '').trim();
+    const user = (document.getElementById('loginUser').value || '').trim();
     const pass = document.getElementById('loginPass').value;
     const errorMsg = document.getElementById('loginError');
 
-    // --- SET YOUR PASSWORD HERE ---
-    // Currently set to: admin / admin123
-    if (user === "admin" && pass === "admin123") {
-        try {
-            if (typeof firebase !== 'undefined' && firebase.auth) {
-                const auth = firebase.auth();
-                if (!auth.currentUser) await auth.signInAnonymously();
-            }
-        } catch (err) {
-            console.error("Firebase login failed; using local session.", err);
+    const showError = (msg) => {
+        if (errorMsg) {
+            errorMsg.innerText = msg;
+            errorMsg.style.display = 'block';
         }
+    };
+
+    if (!user || !pass) {
+        showError("Please enter email and password.");
+        return;
+    }
+
+    try {
+        if (!firebase?.auth) throw new Error("Firebase Auth not loaded on this page.");
+        const cred = await firebase.auth().signInWithEmailAndPassword(user, pass);
+        const uid = cred.user?.uid;
+
+        let storeId = storeInput;
+        if (db && uid) {
+            const userDoc = await db.collection('users').doc(uid).get();
+            if (userDoc.exists) {
+                const data = userDoc.data() || {};
+                storeId = data.storeId || storeId;
+                if (data.role) {
+                    localStorage.setItem('optixUserRole', data.role);
+                    sessionStorage.setItem('optixUserRole', data.role);
+                }
+            }
+        }
+
+        if (!storeId) {
+            showError("Store ID is not set for this user. Ask admin to set storeId in Firestore.");
+            await firebase.auth().signOut();
+            return;
+        }
+
         localStorage.setItem('optixLoggedIn', 'true');
         sessionStorage.setItem('optixLoggedIn', 'true');
+        localStorage.setItem('optixStoreId', storeId);
+        sessionStorage.setItem('optixStoreId', storeId);
+        localStorage.setItem('optixUserEmail', user);
         localStorage.setItem('optixSessionStart', new Date().toISOString());
         window.location.href = 'dashboard.html';
-    } else {
-        if (errorMsg) errorMsg.style.display = 'block';
+    } catch (err) {
+        console.error("Login failed:", err);
+        showError(err?.message ? `❌ ${err.message}` : "❌ Invalid Username or Password");
         const card = document.querySelector('.login-card');
         if (card) {
             card.style.transform = "translateX(5px)";
@@ -752,6 +900,8 @@ async function performLogout() {
         }
         localStorage.removeItem('optixLoggedIn');
         sessionStorage.removeItem('optixLoggedIn');
+        localStorage.removeItem('optixStoreId');
+        sessionStorage.removeItem('optixStoreId');
         window.location.href = 'login.html';
     }
 }
@@ -2950,6 +3100,46 @@ function initPrescriptionDate() {
     }
 }
 
+function bindPrescriptionCalcs() {
+    const eyes = ['r','l'];
+    const num = (id) => {
+        const el = document.getElementById(id);
+        if (!el) return null;
+        const v = parseFloat(el.value);
+        return isNaN(v) ? null : v;
+    };
+    const setVal = (id, val) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.value = val;
+    };
+    eyes.forEach(eye => {
+        const distId = `${eye}_sph`;
+        const nearId = `${eye}_nv_sph`;
+        const addId = `${eye}_add`;
+        const recalcNear = () => {
+            const d = num(distId);
+            const a = num(addId);
+            if (d === null || a === null) return;
+            setVal(nearId, (d + a).toFixed(2));
+        };
+        const recalcAdd = () => {
+            const d = num(distId);
+            const n = num(nearId);
+            if (d === null || n === null) return;
+            setVal(addId, (n - d).toFixed(2));
+        };
+        ['input','change'].forEach(evt => {
+            const distEl = document.getElementById(distId);
+            const addEl = document.getElementById(addId);
+            const nearEl = document.getElementById(nearId);
+            if (distEl) distEl.addEventListener(evt, recalcNear);
+            if (addEl) addEl.addEventListener(evt, recalcNear);
+            if (nearEl) nearEl.addEventListener(evt, recalcAdd);
+        });
+    });
+}
+
 // Save Final Prescription (Eyewear + Contact Lens)
 function saveFinalRx() {
     const patName = document.getElementById('patName').value.trim();
@@ -2982,10 +3172,12 @@ function saveFinalRx() {
             sph: document.getElementById('r_sph').value,
             cyl: document.getElementById('r_cyl').value,
             axis: document.getElementById('r_axis').value,
+            pd: document.getElementById('r_pd').value,
             va: document.getElementById('r_va').value,
             nvSph: document.getElementById('r_nv_sph').value,
             nvCyl: document.getElementById('r_nv_cyl').value,
             nvAxis: document.getElementById('r_nv_axis').value,
+            nvPd: document.getElementById('r_nv_pd').value,
             nvVa: document.getElementById('r_nv_va').value,
             add: document.getElementById('r_add').value
         };
@@ -2993,10 +3185,12 @@ function saveFinalRx() {
             sph: document.getElementById('l_sph').value,
             cyl: document.getElementById('l_cyl').value,
             axis: document.getElementById('l_axis').value,
+            pd: document.getElementById('l_pd').value,
             va: document.getElementById('l_va').value,
             nvSph: document.getElementById('l_nv_sph').value,
             nvCyl: document.getElementById('l_nv_cyl').value,
             nvAxis: document.getElementById('l_nv_axis').value,
+            nvPd: document.getElementById('l_nv_pd').value,
             nvVa: document.getElementById('l_nv_va').value,
             add: document.getElementById('l_add').value
         };
@@ -3814,32 +4008,45 @@ function renderOrderRow(o, index, options) {
     const balance = amount - paid;
     const totals = computeOrderTotals(o);
     const discount = totals.totalDiscount || 0;
+    const settings = getSettings();
+    const actionsCfg = settings.actionsConfig || getDefaultActionConfig();
 
     const actions = [];
-    if (getSettings().showWhatsapp !== false) {
+    if (settings.showWhatsapp !== false && actionsCfg.sendWhatsapp !== false) {
         actions.push(`<a class="act-btn ic-blue" onclick="sendWhatsapp('${o.phone}', '${o.name}', ${balance}, ${o.id})" title="Send WhatsApp"><i class="fas fa-paper-plane"></i></a>`);
+    }
+    if (settings.showWhatsapp !== false && actionsCfg.chatWhatsapp !== false) {
         actions.push(`<a class="act-btn ic-whatsapp" onclick="sendWhatsappChat('${o.phone}', '${o.name}', ${balance}, ${o.id})" title="Chat WhatsApp"><i class="fab fa-whatsapp"></i></a>`);
     }
 
-    if (options.showConfirm) {
+    if (options.showConfirm && actionsCfg.confirmOrder !== false) {
         actions.push(`<a class="act-btn ic-check" onclick="confirmOrder(${o.id})" title="Confirm Order"><i class="fas fa-check"></i></a>`);
+    }
+    if (options.showConfirm && actionsCfg.editOrder !== false) {
         actions.push(`<a class="act-btn ic-edit" href="#" onclick="editOrder(${o.id})" title="Edit Order"><i class="fas fa-pen"></i></a>`);
     }
 
-    actions.push(`<a class="act-btn ic-rupee" onclick="viewPayments(${o.id})" title="Payment History"><i class="fas fa-rupee-sign"></i></a>`);
+    if (actionsCfg.paymentHistory !== false) {
+        actions.push(`<a class="act-btn ic-rupee" onclick="viewPayments(${o.id})" title="Payment History"><i class="fas fa-rupee-sign"></i></a>`);
+    }
 
-    if (options.showAdvanceReceipt) {
+    if (options.showAdvanceReceipt && actionsCfg.advanceReceipt !== false) {
         actions.push(`<a class="act-btn ic-print" onclick="printReceipt(${o.id}, 'advance')" title="Print Advance Receipt"><i class="fas fa-file-invoice"></i></a>`);
     }
 
-    actions.push(`<a class="act-btn ic-print" onclick="printReceipt(${o.id}, 'invoice')" title="Print Final Invoice"><i class="fas fa-print"></i></a>`);
-    actions.push(`<a class="act-btn ic-eye" onclick="openRxEditor(${o.id})" title="View/Edit Rx"><i class="fas fa-eye"></i></a>`);
+    if (actionsCfg.finalInvoice !== false) {
+        actions.push(`<a class="act-btn ic-print" onclick="printReceipt(${o.id}, 'invoice')" title="Print Final Invoice"><i class="fas fa-print"></i></a>`);
+    }
+    if (actionsCfg.viewRx !== false) {
+        actions.push(`<a class="act-btn ic-eye" onclick="openRxEditor(${o.id})" title="View/Edit Rx"><i class="fas fa-eye"></i></a>`);
+    }
 
-    if (options.showDelete) {
+    if (options.showDelete && actionsCfg.deleteOrder !== false) {
         actions.push(`<a class="act-btn ic-delete" onclick="deleteOrder(${o.id})" title="Delete Order"><i class="fas fa-times"></i></a>`);
     }
 
     const statusLabel = status === "Confirmed" ? `<div style="color:green; font-weight:bold; margin-top:4px;">Status: Confirmed</div>` : '';
+    const branchName = settings.branchName || 'Main Branch';
 
     return `
     <tr>
@@ -3867,7 +4074,7 @@ function renderOrderRow(o, index, options) {
             ${statusLabel}
         </td>
         
-        <td>Cleandekho.com</td>
+        <td>${branchName}</td>
         <td>Admin</td>
         
         <td>

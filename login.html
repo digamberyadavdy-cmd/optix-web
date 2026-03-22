@@ -57,8 +57,18 @@
         </div>
 
         <div class="input-group">
+            <i class="fas fa-store"></i>
+            <input list="storeOptions" type="text" id="loginStore" placeholder="Store ID (e.g., store-01)">
+            <datalist id="storeOptions">
+                <option value="store-01">
+                <option value="store-02">
+                <option value="hq">
+            </datalist>
+        </div>
+
+        <div class="input-group">
             <i class="fas fa-user"></i>
-            <input type="text" id="loginUser" placeholder="Username">
+            <input type="text" id="loginUser" placeholder="Email">
         </div>
 
         <div class="input-group">
@@ -80,6 +90,12 @@
         // Check if already logged in, redirect to dashboard
         if(localStorage.getItem('optixLoggedIn') === 'true' || sessionStorage.getItem('optixLoggedIn') === 'true') {
             window.location.href = 'dashboard.html';
+        }
+        // Prefill store ID if previously used
+        const savedStore = localStorage.getItem('optixStoreId');
+        if (savedStore) {
+            const storeInput = document.getElementById('loginStore');
+            if (storeInput) storeInput.value = savedStore;
         }
     </script>
 </body>
