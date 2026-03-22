@@ -1585,11 +1585,15 @@ function loadDashboard() {
 
     // 6. Update the HTML Elements
     // Pending Task Panel
-    if(document.getElementById('dash-pending-val')) {
-        const pendingEl = document.getElementById('dash-pending-val');
-        pendingEl.innerText = "Rs " + totalPending.toFixed(2);
-        // Turn red if there is pending balance, green if 0
-        pendingEl.style.color = totalPending > 0 ? "red" : "green";
+    const pendingValEl = document.getElementById('dash-pending-val');
+    const pendingBalEl = document.getElementById('dash-pending-balance');
+    if(pendingValEl) {
+        pendingValEl.innerText = "Rs " + totalPending.toFixed(2);
+        pendingValEl.style.color = totalPending > 0 ? "red" : "green";
+    }
+    if(pendingBalEl) {
+        pendingBalEl.innerText = "Rs " + totalPending.toFixed(2);
+        pendingBalEl.style.color = totalPending > 0 ? "red" : "green";
     }
 
     // Today's Data Panel
