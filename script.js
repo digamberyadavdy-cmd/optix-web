@@ -72,7 +72,6 @@ document.addEventListener("DOMContentLoaded", () => {
         applySettings();
         ensureSettingsModal();
         bindSettingsIcon();
-        populateLoginBranchField();
         if(document.getElementById('rxDate')) {
             initPrescriptionDate();
             bindPrescriptionCalcs();
@@ -125,7 +124,7 @@ function initFirebaseServices() {
 
 // --- SETTINGS & AUTH ---
 const FIREBASE_PROJECT_ID = 'optixweb-68694';
-const DEFAULT_CLOUD_SYNC_URL = `https://${FIREBASE_PROJECT_ID}-default-rtdb.firebaseio.com/optixSync.json`;
+const DEFAULT_CLOUD_SYNC_URL = `https://${'{'}FIREBASE_PROJECT_ID}-default-rtdb.firebaseio.com/optixSync.json`;
 const CLOUD_SYNC_EXCLUDE_KEYS = ['optixLoggedIn', 'optixSessionStart', 'tempCustName', 'tempCustPhone'];
 const FIRESTORE_STATE_EXCLUDE_KEYS = ['optixProducts'];
 const optixMemoryStore = Object.create(null);
@@ -138,8 +137,6 @@ const ENTITY_DOC_COLLECTIONS = {
     optixSettings: 'settings_state'
 };
 const ENTITY_ARRAY_KEYS = ['optixOrders', 'optixCustomers', 'optixExpenses', 'optixPrescriptions'];
-const BRANCHES_KEY = 'optixBranchesConfig';
-const MASTER_ADMIN_KEY = 'optixMasterAdminCreds';
 
 function branchNameToStoreId(name) {
     const raw = String(name || '').trim().toLowerCase();
@@ -148,76 +145,11 @@ function branchNameToStoreId(name) {
     return slug || 'default';
 }
 
-function getStoredBranchConfigs() {
-    try {
-        return JSON.parse(localStorage.getItem(BRANCHES_KEY)) || [];
-    } catch {
-        return [];
-    }
-}
-
-function saveBranchConfigs(branches) {
-    localStorage.setItem(BRANCHES_KEY, JSON.stringify(branches));
-}
-
-function ensureBranchConfigs() {
-    let branches = getStoredBranchConfigs();
-    if (branches.length === 0) {
-        branches = [createDefaultBranchConfig()];
-        saveBranchConfigs(branches);
-    }
-    return branches;
-}
-
-function createDefaultBranchConfig() {
-    const branchName = getSettings().branchName || 'Main Branch';
-    return {
-        id: branchNameToStoreId(branchName),
-        name: branchName,
-        loginUser: 'admin',
-        loginPassword: 'admin123'
-    };
-}
-
-function findBranchById(id) {
-    const branches = getStoredBranchConfigs();
-    return branches.find(b => b.id === id) || null;
-}
-
-function getMasterAdminConfig() {
-    try {
-        const raw = localStorage.getItem(MASTER_ADMIN_KEY);
-        if (!raw) throw new Error("empty");
-        return JSON.parse(raw);
-    } catch {
-        const defaults = { username: 'master', password: 'master123' };
-        localStorage.setItem(MASTER_ADMIN_KEY, JSON.stringify(defaults));
-        return defaults;
-    }
-}
-
-function saveMasterAdminConfig(config) {
-    if (!config || !config.username || !config.password) return false;
-    localStorage.setItem(MASTER_ADMIN_KEY, JSON.stringify({
-        username: String(config.username).trim(),
-        password: String(config.password)
-    }));
-    return true;
-}
-
 function getLoginBranchId() {
-    const select = document.getElementById('loginBranchSelect');
-    if (select && select.value) return select.value;
-    const branches = ensureBranchConfigs();
-    return branches[0]?.id || 'default';
+    const branchName = getSettings().branchName || 'Main Branch';
+    return branchNameToStoreId(branchName);
 }
 
-function populateLoginBranchField() {
-    const select = document.getElementById('loginBranchSelect');
-    if (!select) return;
-    const branches = ensureBranchConfigs();
-    select.innerHTML = branches.map(b => `<option value="${b.id}">${b.name}</option>`).join('');
-}
 function shouldHydrateEntityArray(raw) {
     if (!raw) return true;
     const trimmed = raw.trim();
@@ -952,38 +884,13 @@ function resetAllData() {
     window.location.href = 'login.html';
 }
 
-function branchNameToStoreId(name) {
-    const raw = (name || '').trim().toLowerCase();
-    if (!raw) return 'default';
-    const slug = raw.replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
-    return slug || 'default';
-}
-
-function getLoginBranchId() {
-    const select = document.getElementById('loginBranchSelect');
-    if (select && select.value) return select.value;
-    const branches = ensureBranchConfigs();
-    return branches[0]?.id || 'default';
-}
-
-function populateLoginBranchField() {
-    const select = document.getElementById('loginBranchSelect');
-    if (!select) return;
-    const branches = ensureBranchConfigs();
-    select.innerHTML = branches.map(b => `<option value="${b.id}">${b.name}</option>`).join('');
-}
-
 async function performLogin() {
     const user = document.getElementById('loginUser').value;
     const pass = document.getElementById('loginPass').value;
     const errorMsg = document.getElementById('loginError');
-    const branchId = getLoginBranchId();
-    const branch = findBranchById(branchId);
-    const expectedUser = branch?.loginUser || 'admin';
-    const expectedPass = branch?.loginPassword || 'admin123';
-    if (user !== expectedUser || pass !== expectedPass) {
+    if (user !== "admin" || pass !== "admin123") {
         if (errorMsg) {
-            errorMsg.innerText = "Branch username or password is incorrect";
+            errorMsg.innerText = "❌ Invalid Username or Password";
             errorMsg.style.display = 'block';
         }
         return;
@@ -996,7 +903,7 @@ async function performLogin() {
     } catch (err) {
         console.error("Firebase login failed; using local session.", err);
     }
-    const defaultStore = branch?.id || branchId || 'default';
+    const defaultStore = getLoginBranchId();
     localStorage.setItem('optixStoreId', defaultStore);
     sessionStorage.setItem('optixStoreId', defaultStore);
     localStorage.setItem('optixLoggedIn', 'true');
@@ -1019,153 +926,6 @@ async function performLogout() {
         sessionStorage.removeItem('optixStoreId');
         window.location.href = 'login.html';
     }
-}
-
-function masterAdminResetBranchForm() {
-    const nameInput = document.getElementById('branchNameInput');
-    const userInput = document.getElementById('branchUserInput');
-    const passwordInput = document.getElementById('branchPasswordInput');
-    const editIdInput = document.getElementById('branchEditId');
-    const submitBtn = document.getElementById('branchSubmitBtn');
-    if (nameInput) nameInput.value = '';
-    if (userInput) userInput.value = '';
-    if (passwordInput) passwordInput.value = '';
-    if (editIdInput) editIdInput.value = '';
-    if (submitBtn) submitBtn.innerText = 'Save Branch';
-}
-
-function masterAdminRenderBranchTable() {
-    const tbody = document.getElementById('branchListBody');
-    if (!tbody) return;
-    const branches = ensureBranchConfigs();
-    tbody.innerHTML = branches.map((branch, index) => `
-        <tr>
-            <td>${index + 1}</td>
-            <td>${branch.name}</td>
-            <td>${branch.id}</td>
-            <td>${branch.loginUser || 'admin'}</td>
-            <td>${branch.loginPassword ? '********' : 'Not set'}</td>
-            <td>
-                <button type="button" class="master-btn" onclick="masterAdminEditBranch('${branch.id}')">Edit</button>
-                <button type="button" class="master-btn" onclick="masterAdminDeleteBranch('${branch.id}')">Delete</button>
-                <button type="button" class="master-btn" onclick="masterAdminCopyBranchId('${branch.id}')">Copy ID</button>
-            </td>
-        </tr>
-    `).join('');
-}
-
-function masterAdminSaveBranch(event) {
-    event.preventDefault();
-    const nameEl = document.getElementById('branchNameInput');
-    const userEl = document.getElementById('branchUserInput');
-    const passEl = document.getElementById('branchPasswordInput');
-    const editIdEl = document.getElementById('branchEditId');
-    if (!nameEl) return;
-    const name = nameEl.value.trim();
-    if (!name) {
-        alert("Branch name is required.");
-        return;
-    }
-    const loginUser = (userEl?.value || 'admin').trim() || 'admin';
-    const loginPassword = passEl?.value || 'admin123';
-    let branches = ensureBranchConfigs();
-    let branchId = editIdEl?.value || branchNameToStoreId(name);
-    if (!editIdEl?.value && branches.some(b => b.id === branchId)) {
-        branchId = `${branchId}-${Date.now()}`;
-    }
-    const existingIndex = branches.findIndex(b => b.id === branchId);
-    const branchFromForm = {
-        id: branchId,
-        name,
-        loginUser,
-        loginPassword
-    };
-    if (existingIndex > -1) {
-        branches[existingIndex] = branchFromForm;
-    } else {
-        branches.push(branchFromForm);
-    }
-    saveBranchConfigs(branches);
-    populateLoginBranchField();
-    masterAdminRenderBranchTable();
-    masterAdminResetBranchForm();
-    alert("Branch saved.");
-}
-
-function masterAdminEditBranch(id) {
-    const branch = findBranchById(id);
-    if (!branch) return;
-    const nameEl = document.getElementById('branchNameInput');
-    const userEl = document.getElementById('branchUserInput');
-    const passEl = document.getElementById('branchPasswordInput');
-    const editEl = document.getElementById('branchEditId');
-    const submitBtn = document.getElementById('branchSubmitBtn');
-    if (nameEl) nameEl.value = branch.name;
-    if (userEl) userEl.value = branch.loginUser || 'admin';
-    if (passEl) passEl.value = branch.loginPassword || 'admin123';
-    if (editEl) editEl.value = branch.id;
-    if (submitBtn) submitBtn.innerText = 'Update Branch';
-}
-
-function masterAdminDeleteBranch(id) {
-    if (!confirm("Remove this branch?")) return;
-    let branches = ensureBranchConfigs();
-    branches = branches.filter(b => b.id !== id);
-    if (branches.length === 0) {
-        branches = [createDefaultBranchConfig()];
-    }
-    saveBranchConfigs(branches);
-    masterAdminRenderBranchTable();
-    populateLoginBranchField();
-    masterAdminResetBranchForm();
-    alert("Branch deleted.");
-}
-
-function masterAdminCopyBranchId(id) {
-    if (!id) return;
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(id).then(() => {
-            alert("Branch ID copied.");
-        }).catch(() => {
-            alert("Copy failed; please copy manually.");
-        });
-        return;
-    }
-    alert("Copy the ID manually: " + id);
-}
-
-function masterAdminSaveCredentials(event) {
-    event.preventDefault();
-    const userEl = document.getElementById('masterUserInput');
-    const passEl = document.getElementById('masterPassInput');
-    const username = (userEl?.value || '').trim();
-    const password = passEl?.value || '';
-    if (!username || !password) {
-        alert("Master username and password are required.");
-        return;
-    }
-    saveMasterAdminConfig({ username, password });
-    alert("Master admin credentials updated.");
-}
-
-function masterAdminLoadCredentials() {
-    const creds = getMasterAdminConfig();
-    const userEl = document.getElementById('masterUserInput');
-    const passEl = document.getElementById('masterPassInput');
-    if (userEl) userEl.value = creds.username || 'master';
-    if (passEl) passEl.value = creds.password || 'master123';
-}
-
-function initMasterAdminPage() {
-    const branchForm = document.getElementById('branchForm');
-    if (branchForm) branchForm.addEventListener('submit', masterAdminSaveBranch);
-    const masterForm = document.getElementById('masterAdminForm');
-    if (masterForm) masterForm.addEventListener('submit', masterAdminSaveCredentials);
-    masterAdminRenderBranchTable();
-    masterAdminLoadCredentials();
-    masterAdminResetBranchForm();
-}
-
 // --- PART 1: PRODUCT MANAGEMENT ---
 
 // A. Generate Unique 8-Char Barcode

@@ -43,40 +43,6 @@
             -webkit-appearance: none;
             -moz-appearance: none;
             appearance: none;
-            background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 6"><path fill="%23666" d="M0 0l5 6 5-6z"/></svg>');
-            background-repeat: no-repeat;
-            background-position: calc(100% - 16px) center;
-            background-size: 12px;
-        }
-        .login-toggle {
-            display: flex;
-            gap: 8px;
-            margin-bottom: 20px;
-        }
-        .login-mode-btn {
-            flex: 1;
-            padding: 8px 0;
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-            font-weight: 600;
-            background: #eaeffa;
-            color: #1f2a44;
-            transition: 0.2s;
-        }
-        .login-mode-btn.active {
-            background: #1f2937;
-            color: #fff;
-        }
-        .login-branch-fields {
-            margin-top: 10px;
-            text-align: left;
-            display: none;
-        }
-        .branch-hint {
-            margin-top: 6px;
-            font-size: 12px;
-            color: #4b5563;
         }
 
         .btn-login {
@@ -109,13 +75,6 @@
             <input type="password" id="loginPass" placeholder="Password">
         </div>
 
-        <div class="login-branch-fields">
-            <div class="input-group">
-                <i class="fas fa-building"></i>
-                <select id="loginBranchSelect"></select>
-            </div>
-        </div>
-
         <button class="btn-login" onclick="performLogin()">SECURE LOGIN</button>
         <div id="loginError" class="error-msg">❌ Invalid Username or Password</div>
 
@@ -127,8 +86,6 @@
 
         <script src="script.js?v=cachefix2"></script>
     <script>
-        if (typeof populateLoginBranchField === 'function') populateLoginBranchField();
-        // Redirect if already logged in
         if(localStorage.getItem('optixLoggedIn') === 'true' || sessionStorage.getItem('optixLoggedIn') === 'true') {
             window.location.href = 'dashboard.html';
         }
