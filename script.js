@@ -1561,6 +1561,7 @@ function loadDashboard() {
         const status = (o.status || "").toLowerCase();
         if (balance > 0 && status !== "cancelled") {
             totalPending += balance;
+            pendingCount += 1;
         }
 
         // Today's Sales
@@ -1587,6 +1588,7 @@ function loadDashboard() {
     // Pending Task Panel
     const pendingValEl = document.getElementById('dash-pending-val');
     const pendingBalEl = document.getElementById('dash-pending-balance');
+    const pendingCountEl = document.getElementById('dash-pending-count');
     if(pendingValEl) {
         pendingValEl.innerText = "Rs " + totalPending.toFixed(2);
         pendingValEl.style.color = totalPending > 0 ? "red" : "green";
@@ -1594,6 +1596,10 @@ function loadDashboard() {
     if(pendingBalEl) {
         pendingBalEl.innerText = "Rs " + totalPending.toFixed(2);
         pendingBalEl.style.color = totalPending > 0 ? "red" : "green";
+    }
+    if(pendingCountEl) {
+        pendingCountEl.innerText = pendingCount;
+        pendingCountEl.style.color = pendingCount > 0 ? "red" : "green";
     }
 
     // Today's Data Panel
