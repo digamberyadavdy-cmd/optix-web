@@ -140,7 +140,6 @@ const ENTITY_DOC_COLLECTIONS = {
 const ENTITY_ARRAY_KEYS = ['optixOrders', 'optixCustomers', 'optixExpenses', 'optixPrescriptions'];
 const BRANCHES_KEY = 'optixBranchesConfig';
 const MASTER_ADMIN_KEY = 'optixMasterAdminCreds';
-let loginMode = 'branch';
 
 function branchNameToStoreId(name) {
     const raw = String(name || '').trim().toLowerCase();
@@ -206,45 +205,6 @@ function saveMasterAdminConfig(config) {
     return true;
 }
 
-function setLoginMode(mode) {
-    loginMode = mode === 'admin' ? 'admin' : 'branch';
-    const branchSection = document.querySelector('.login-branch-fields');
-    if (branchSection) {
-        branchSection.style.display = loginMode === 'branch' ? 'block' : 'none';
-    }
-    document.querySelectorAll('.login-mode-btn').forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.mode === loginMode);
-    });
-    updateLoginBranchHints();
-}
-
-function updateLoginBranchHints() {
-    const hintEl = document.getElementById('branchLoginHint');
-    if (!hintEl) return;
-    if (loginMode === 'branch') {
-        const branchId = getLoginBranchId();
-        const branch = findBranchById(branchId);
-        if (branch) {
-            hintEl.textContent = `Login user: ${branch.loginUser || 'admin'} | Password stored securely`;
-            return;
-        }
-    }
-    hintEl.textContent = '';
-}
-
-function initLoginPageUI() {
-    const buttons = document.querySelectorAll('.login-mode-btn');
-    if (!buttons.length) return;
-    buttons.forEach(btn => {
-        btn.addEventListener('click', () => setLoginMode(btn.dataset.mode));
-    });
-    const branchSelect = document.getElementById('loginBranchSelect');
-    if (branchSelect) {
-        branchSelect.addEventListener('change', updateLoginBranchHints);
-    }
-    setLoginMode('branch');
-}
-
 function getLoginBranchId() {
     const select = document.getElementById('loginBranchSelect');
     if (select && select.value) return select.value;
@@ -257,7 +217,6 @@ function populateLoginBranchField() {
     if (!select) return;
     const branches = ensureBranchConfigs();
     select.innerHTML = branches.map(b => `<option value="${b.id}">${b.name}</option>`).join('');
-    updateLoginBranchHints();
 }
 function shouldHydrateEntityArray(raw) {
     if (!raw) return true;
@@ -1012,71 +971,39 @@ function populateLoginBranchField() {
     if (!select) return;
     const branches = ensureBranchConfigs();
     select.innerHTML = branches.map(b => `<option value="${b.id}">${b.name}</option>`).join('');
-    updateLoginBranchHints();
 }
 
 async function performLogin() {
     const user = document.getElementById('loginUser').value;
     const pass = document.getElementById('loginPass').value;
     const errorMsg = document.getElementById('loginError');
-
-            // --- SET YOUR PASSWORD HERE ---
-    if (loginMode === 'admin') {
-        const masterCred = getMasterAdminConfig();
-        if (user === masterCred.username && pass === masterCred.password) {
-            localStorage.setItem('optixLoggedIn', 'true');
-            sessionStorage.setItem('optixLoggedIn', 'true');
-            localStorage.setItem('optixIsMasterAdmin', 'true');
-            sessionStorage.setItem('optixIsMasterAdmin', 'true');
-            window.location.href = 'master-admin.html';
-            return;
-        }
+    const branchId = getLoginBranchId();
+    const branch = findBranchById(branchId);
+    const expectedUser = branch?.loginUser || 'admin';
+    const expectedPass = branch?.loginPassword || 'admin123';
+    if (user !== expectedUser || pass !== expectedPass) {
         if (errorMsg) {
-            errorMsg.innerText = "Invalid Master Admin credentials";
+            errorMsg.innerText = "Branch username or password is incorrect";
             errorMsg.style.display = 'block';
         }
         return;
     }
-    if (loginMode === 'branch') {
-        const branchId = getLoginBranchId();
-        const branch = findBranchById(branchId);
-        const expectedUser = branch?.loginUser || 'admin';
-        const expectedPass = branch?.loginPassword || 'admin123';
-        if (user !== expectedUser || pass !== expectedPass) {
-            if (errorMsg) {
-                errorMsg.innerText = "Branch username or password is incorrect";
-                errorMsg.style.display = 'block';
-            }
-            const hintEl = document.getElementById('branchLoginHint');
-            if (hintEl) {
-                hintEl.innerText = 'Check the branch credentials stored in Master Admin.';
-            }
-            return;
+    try {
+        if (typeof firebase !== 'undefined' && firebase.auth) {
+            const auth = firebase.auth();
+            if (!auth.currentUser) await auth.signInAnonymously();
         }
-        try {
-            if (typeof firebase !== 'undefined' && firebase.auth) {
-                const auth = firebase.auth();
-                if (!auth.currentUser) await auth.signInAnonymously();
-            }
-        } catch (err) {
-            console.error("Firebase login failed; using local session.", err);
-        }
-        const defaultStore = branch?.id || branchId || 'default';
-        localStorage.setItem('optixStoreId', defaultStore);
-        sessionStorage.setItem('optixStoreId', defaultStore);
-        localStorage.setItem('optixLoggedIn', 'true');
-        sessionStorage.setItem('optixLoggedIn', 'true');
-        localStorage.setItem('optixSessionStart', new Date().toISOString());
-        localStorage.removeItem('optixIsMasterAdmin');
-        sessionStorage.removeItem('optixIsMasterAdmin');
-        window.location.href = 'dashboard.html';
-        return;
+    } catch (err) {
+        console.error("Firebase login failed; using local session.", err);
     }
-    if (errorMsg) {
-        errorMsg.innerText = "Invalid login mode";
-        errorMsg.style.display = 'block';
-    }
-
+    const defaultStore = branch?.id || branchId || 'default';
+    localStorage.setItem('optixStoreId', defaultStore);
+    sessionStorage.setItem('optixStoreId', defaultStore);
+    localStorage.setItem('optixLoggedIn', 'true');
+    sessionStorage.setItem('optixLoggedIn', 'true');
+    localStorage.setItem('optixSessionStart', new Date().toISOString());
+    window.location.href = 'dashboard.html';
+}
 async function performLogout() {
     if(confirm("Are you sure you want to Logout?")) {
         try {

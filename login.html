@@ -99,11 +99,6 @@
             <h2>OptixCrafter CRM</h2>
         </div>
 
-        <div class="login-toggle">
-            <button type="button" class="login-mode-btn active" data-mode="branch">Branch Login</button>
-            <button type="button" class="login-mode-btn" data-mode="admin">Master Admin</button>
-        </div>
-
         <div class="input-group">
             <i class="fas fa-user"></i>
             <input type="text" id="loginUser" placeholder="Username">
@@ -119,7 +114,6 @@
                 <i class="fas fa-building"></i>
                 <select id="loginBranchSelect"></select>
             </div>
-            <div class="branch-hint" id="branchLoginHint"></div>
         </div>
 
         <button class="btn-login" onclick="performLogin()">SECURE LOGIN</button>
@@ -131,14 +125,12 @@
         </div>
     </div>
 
-    <script src="script.js?v=cachefix2"></script>
+        <script src="script.js?v=cachefix2"></script>
     <script>
         if (typeof populateLoginBranchField === 'function') populateLoginBranchField();
-        if (typeof initLoginPageUI === 'function') initLoginPageUI();
-        // Check if already logged in, redirect accordingly
+        // Redirect if already logged in
         if(localStorage.getItem('optixLoggedIn') === 'true' || sessionStorage.getItem('optixLoggedIn') === 'true') {
-            const master = localStorage.getItem('optixIsMasterAdmin') === 'true' || sessionStorage.getItem('optixIsMasterAdmin') === 'true';
-            window.location.href = master ? 'master-admin.html' : 'dashboard.html';
+            window.location.href = 'dashboard.html';
         }
     </script>
 </body>
