@@ -1554,8 +1554,14 @@ function loadDashboard() {
         const oDate = new Date(o.date);
         const oDateStr = oDate.toISOString().split('T')[0];
 
-        // Pending Balance (Total Amount - Paid Amount)
-        totalPending += (o.amount - o.paid);
+        // Pending Balance (only positive, skip cancelled)
+        const amount = parseFloat(o.amount) || 0;
+        const paid = parseFloat(o.paid) || 0;
+        const balance = amount - paid;
+        const status = (o.status || "").toLowerCase();
+        if (balance > 0 && status !== "cancelled") {
+            totalPending += balance;
+        }
 
         // Today's Sales
         if (oDateStr === todayStr) {
