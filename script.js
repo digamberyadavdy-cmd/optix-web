@@ -1538,6 +1538,13 @@ function loadDashboard() {
     const currentMonth = now.getMonth(); // 0-11
     const currentYear = now.getFullYear();
 
+    const num = (v) => {
+        if (typeof v === 'number' && !isNaN(v)) return v;
+        const cleaned = String(v || '').replace(/[^0-9.\-]/g, '');
+        const n = parseFloat(cleaned);
+        return isNaN(n) ? 0 : n;
+    };
+
     // 2. Fetch Data from LocalStorage
     const orders = JSON.parse(localStorage.getItem('optixOrders')) || [];
     const expenses = JSON.parse(localStorage.getItem('optixExpenses')) || [];
@@ -1555,8 +1562,8 @@ function loadDashboard() {
         const oDateStr = oDate.toISOString().split('T')[0];
 
         // Pending Balance (only positive, skip cancelled)
-        const amount = parseFloat(o.amount) || 0;
-        const paid = parseFloat(o.paid) || 0;
+        const amount = num(o.amount);
+        const paid = num(o.paid);
         const balance = amount - paid;
         const status = (o.status || "").toLowerCase();
         if (balance > 0 && status !== "cancelled") {
@@ -1566,12 +1573,12 @@ function loadDashboard() {
 
         // Today's Sales
         if (oDateStr === todayStr) {
-            todaySales += o.amount;
+            todaySales += amount;
         }
 
         // This Month's Data
         if (oDate.getMonth() === currentMonth && oDate.getFullYear() === currentYear) {
-            monthSales += o.amount;
+            monthSales += amount;
             monthBillCount++;
         }
     });
