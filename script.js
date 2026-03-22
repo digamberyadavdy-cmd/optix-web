@@ -1533,38 +1533,48 @@ function loadAccounts() {
 
 function loadDashboard() {
     try {
-        // 1. Get Current Date Info
-        const now = new Date();
-        const todayStr = now.toISOString().split('T')[0]; // Format: YYYY-MM-DD
-        const currentMonth = now.getMonth(); // 0-11
-        const currentYear = now.getFullYear();
-
         const num = (v) => {
             if (typeof v === 'number' && !isNaN(v)) return v;
             const cleaned = String(v || '').replace(/[^0-9.\-]/g, '');
             const n = parseFloat(cleaned);
             return isNaN(n) ? 0 : n;
         };
+        const parseDateLoose = (val) => {
+            if (!val) return null;
+            if (val instanceof Date && !isNaN(val)) return val;
+            const d = new Date(val);
+            if (!isNaN(d)) return d;
+            const m = String(val).match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/);
+            if (m) {
+                let dd = m[1].padStart(2, '0');
+                let mm = m[2].padStart(2, '0');
+                let yy = m[3].length === 2 ? '20' + m[3] : m[3];
+                return new Date(`${yy}-${mm}-${dd}`);
+            }
+            return null;
+        };
 
-        // 2. Fetch Data from LocalStorage
+        const now = new Date();
+        const todayStr = now.toISOString().split('T')[0];
+        const currentMonth = now.getMonth();
+        const currentYear = now.getFullYear();
+
         const orders = JSON.parse(localStorage.getItem('optixOrders')) || [];
         const expenses = JSON.parse(localStorage.getItem('optixExpenses')) || [];
 
-        // 3. Initialize Counters
         let todaySales = 0;
+        let todayCollection = 0;
         let monthSales = 0;
         let totalPending = 0;
         let pendingCount = 0;
         let monthBillCount = 0;
         let todayExpense = 0;
 
-        // 4. Calculate Order Stats
         orders.forEach(o => {
-            const oDate = new Date(o.date);
-            const validDate = !isNaN(oDate.getTime());
+            const oDate = parseDateLoose(o.date);
+            const validDate = oDate && !isNaN(oDate.getTime());
             const oDateStr = validDate ? oDate.toISOString().split('T')[0] : null;
 
-            // Pending Balance (only positive, skip cancelled)
             const amount = num(o.amount);
             const paid = num(o.paid);
             const balance = amount - paid;
@@ -1573,28 +1583,25 @@ function loadDashboard() {
                 totalPending += balance;
                 pendingCount += 1;
             }
-
-            // Today's Sales
             if (validDate && oDateStr === todayStr) {
                 todaySales += amount;
+                todayCollection += paid;
             }
-
-            // This Month's Data
             if (validDate && oDate.getMonth() === currentMonth && oDate.getFullYear() === currentYear) {
                 monthSales += amount;
                 monthBillCount++;
             }
         });
 
-        // 5. Calculate Expense Stats (Today Only)
         expenses.forEach(e => {
-            if (e.date === todayStr) {
+            const eDate = parseDateLoose(e.date);
+            const validDate = eDate && !isNaN(eDate.getTime());
+            const eDateStr = validDate ? eDate.toISOString().split('T')[0] : null;
+            if (eDateStr === todayStr) {
                 todayExpense += num(e.amount);
             }
         });
 
-    // 6. Update the HTML Elements
-    // Pending Task Panel
         const pendingValEl = document.getElementById('dash-pending-val');
         const pendingBalEl = document.getElementById('dash-pending-balance');
         const pendingCountEl = document.getElementById('dash-pending-count');
@@ -1610,19 +1617,19 @@ function loadDashboard() {
             pendingCountEl.innerText = pendingCount;
             pendingCountEl.style.color = pendingCount > 0 ? "red" : "green";
         }
-    if(pendingCountEl) {
-        pendingCountEl.innerText = pendingCount;
-        pendingCountEl.style.color = pendingCount > 0 ? "red" : "green";
-    }
 
-    // Today's Data Panel
+        const colEl = document.getElementById('dash-collection');
+        if(colEl) {
+            colEl.innerText = "Rs " + todayCollection.toFixed(2);
+            colEl.style.color = todayCollection > 0 ? "green" : "red";
+        }
+
         if(document.getElementById('dash-today-sales')) {
             document.getElementById('dash-today-sales').innerText = "Rs " + todaySales.toFixed(2);
         }
         if(document.getElementById('dash-expenses')) {
             document.getElementById('dash-expenses').innerText = "Rs " + todayExpense.toFixed(2);
         }
-
         if(document.getElementById('dash-total-sales')) {
             document.getElementById('dash-total-sales').innerText = "Rs " + monthSales.toFixed(2);
         }
