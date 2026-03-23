@@ -29,8 +29,57 @@ service cloud.firestore {
 
     // Products collection (legacy, not under /stores)
     match /products/{docId} {
-      allow read: if isAdmin() || (isSignedIn() && resource.data.storeId == userStore());
-      allow write: if isAdmin() || (isSignedIn() && request.resource.data.storeId == userStore());
+      allow read, write: if isSignedIn();
+    }
+
+    // Current app collections (top-level, storeId stored inside each doc)
+    match /orders/{docId} {
+      allow read, write: if isSignedIn();
+    }
+
+    match /customers/{docId} {
+      allow read, write: if isSignedIn();
+    }
+
+    match /expenses/{docId} {
+      allow read, write: if isSignedIn();
+    }
+
+    match /prescriptions/{docId} {
+      allow read, write: if isSignedIn();
+    }
+
+    match /staff/{docId} {
+      allow read, write: if isSignedIn();
+    }
+
+    // Legacy sync/state documents still used by parts of the app
+    match /app_state/{docId} {
+      allow read, write: if isSignedIn();
+    }
+
+    match /orders_state/{docId} {
+      allow read, write: if isSignedIn();
+    }
+
+    match /customers_state/{docId} {
+      allow read, write: if isSignedIn();
+    }
+
+    match /expenses_state/{docId} {
+      allow read, write: if isSignedIn();
+    }
+
+    match /staff_state/{docId} {
+      allow read, write: if isSignedIn();
+    }
+
+    match /prescriptions_state/{docId} {
+      allow read, write: if isSignedIn();
+    }
+
+    match /settings_state/{docId} {
+      allow read, write: if isSignedIn();
     }
 
     // Tenant data: structure stores/{storeId}/...
