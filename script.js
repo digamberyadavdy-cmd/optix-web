@@ -145,11 +145,19 @@ const CLOUD_PRIMARY_KEYS = new Set([
     'optixExpenses',
     'optixStaff',
     'optixPrescriptions',
-    'optixRx',
-    'optixInvoiceSeq'
+    'optixRx'
 ]);
+const COLLECTION_SYNC_CONFIG = {
+    optixOrders: { collection: 'orders', legacyCollection: 'orders_state' },
+    optixCustomers: { collection: 'customers', legacyCollection: 'customers_state' },
+    optixExpenses: { collection: 'expenses', legacyCollection: 'expenses_state' },
+    optixStaff: { collection: 'staff', legacyCollection: 'staff_state' },
+    optixPrescriptions: { collection: 'prescriptions', legacyCollection: 'prescriptions_state' }
+};
+const COLLECTION_SYNC_KEYS = new Set(Object.keys(COLLECTION_SYNC_CONFIG));
 let entityViewRefreshTimer = null;
 const pendingEntityViewRefreshKeys = new Set();
+const collectionRealtimeUnsubs = Object.create(null);
 
 function branchNameToStoreId(name) {
     const raw = String(name || '').trim().toLowerCase();
@@ -163,8 +171,241 @@ function getLoginBranchId() {
     return branchNameToStoreId(branchName);
 }
 
+function isCollectionBackedKey(key) {
+    return COLLECTION_SYNC_KEYS.has(key);
+}
+
+function shouldMirrorThroughSnapshot(key) {
+    return !isCollectionBackedKey(key) && key !== 'optixProducts';
+}
+
 function shouldPersistOptixKey(key) {
     return isOptixKey(key) && !CLOUD_PRIMARY_KEYS.has(key);
+}
+
+function getCollectionConfig(key) {
+    return COLLECTION_SYNC_CONFIG[key] || null;
+}
+
+function getCollectionStoreId() {
+    return currentStoreId() || getLoginBranchId();
+}
+
+function getCollectionQuery(key) {
+    if (!db) return null;
+    const config = getCollectionConfig(key);
+    const storeId = getCollectionStoreId();
+    if (!config || !storeId) return null;
+    return db.collection(config.collection).where('storeId', '==', storeId);
+}
+
+function getEntityId(key, item) {
+    if (!item || typeof item !== 'object') return null;
+    if (key === 'optixCustomers') return String(item.id || item.phone || '').trim() || null;
+    if (key === 'optixExpenses') return String(item.id || '').trim() || null;
+    if (key === 'optixPrescriptions') return String(item.id || '').trim() || null;
+    if (key === 'optixStaff') return String(item.id || '').trim() || null;
+    return String(item.id || '').trim() || null;
+}
+
+function normalizeEntityForCloud(key, item) {
+    const normalized = JSON.parse(JSON.stringify(item || {}));
+    const storeId = getCollectionStoreId();
+    const entityId = getEntityId(key, normalized) || String(Date.now());
+    normalized.id = normalized.id || entityId;
+    normalized.storeId = normalized.storeId || storeId;
+    delete normalized._docId;
+    return normalized;
+}
+
+function sortCollectionItems(key, items) {
+    const list = Array.isArray(items) ? [...items] : [];
+    const toDateValue = (value) => {
+        const time = value ? new Date(value).getTime() : NaN;
+        return Number.isNaN(time) ? 0 : time;
+    };
+    return list.sort((a, b) => {
+        if (key === 'optixOrders' || key === 'optixExpenses' || key === 'optixPrescriptions' || key === 'optixStaff') {
+            const byDate = toDateValue(a.updatedAt || a.date || a.rxDate || a.joined) - toDateValue(b.updatedAt || b.date || b.rxDate || b.joined);
+            if (byDate !== 0) return byDate;
+        }
+        const aId = parseInt(getEntityId(key, a), 10);
+        const bId = parseInt(getEntityId(key, b), 10);
+        if (!Number.isNaN(aId) && !Number.isNaN(bId) && aId !== bId) return aId - bId;
+        return String(getEntityId(key, a) || '').localeCompare(String(getEntityId(key, b) || ''));
+    });
+}
+
+function setEntityArrayCache(key, items) {
+    const sorted = sortCollectionItems(key, items);
+    localStorage.setItem(key, JSON.stringify(sorted));
+    scheduleEntityViewRefresh(key);
+    return sorted;
+}
+
+function upsertEntityInCache(key, item) {
+    const list = JSON.parse(localStorage.getItem(key)) || [];
+    const entityId = getEntityId(key, item);
+    const next = Array.isArray(list) ? [...list] : [];
+    const idx = next.findIndex((entry) => getEntityId(key, entry) === entityId);
+    if (idx > -1) {
+        next[idx] = { ...next[idx], ...item };
+    } else {
+        next.push(item);
+    }
+    return setEntityArrayCache(key, next);
+}
+
+function removeEntityFromCache(key, entityId) {
+    const list = JSON.parse(localStorage.getItem(key)) || [];
+    const next = (Array.isArray(list) ? list : []).filter((entry) => getEntityId(key, entry) !== String(entityId));
+    return setEntityArrayCache(key, next);
+}
+
+async function ensureProductDocId(product) {
+    if (!db || !product) return null;
+    if (product._docId) return product._docId;
+    const storeId = getCollectionStoreId();
+    if (!storeId || !product.code) return null;
+    const snap = await db.collection('products')
+        .where('storeId', '==', storeId)
+        .where('code', '==', product.code)
+        .limit(1)
+        .get();
+    if (snap.empty) return null;
+    return snap.docs[0].id;
+}
+
+async function syncChangedProductsToCloud(previousProducts, nextProducts) {
+    if (!db) return;
+    const changed = [];
+    const previousByCode = new Map((Array.isArray(previousProducts) ? previousProducts : []).map((item) => [item.code, item]));
+    (Array.isArray(nextProducts) ? nextProducts : []).forEach((product) => {
+        const before = previousByCode.get(product.code);
+        if (!before) return;
+        if ((parseFloat(before.qty) || 0) !== (parseFloat(product.qty) || 0) || String(before.status || '') !== String(product.status || '')) {
+            changed.push(product);
+        }
+    });
+    if (!changed.length) return;
+
+    const batch = db.batch();
+    for (const product of changed) {
+        const docId = await ensureProductDocId(product);
+        if (!docId) continue;
+        const { _docId, ...payload } = product;
+        batch.set(db.collection('products').doc(docId), payload, { merge: true });
+    }
+    await batch.commit();
+}
+
+async function upsertEntityToCloud(key, item) {
+    if (!db || !isCollectionBackedKey(key)) return item;
+    const config = getCollectionConfig(key);
+    const normalized = normalizeEntityForCloud(key, item);
+    const docId = getEntityId(key, normalized);
+    await db.collection(config.collection).doc(String(docId)).set({
+        ...normalized,
+        updatedAt: new Date().toISOString()
+    }, { merge: true });
+    return { ...normalized, _docId: String(docId) };
+}
+
+async function deleteEntityFromCloud(key, entityId) {
+    if (!db || !isCollectionBackedKey(key)) return;
+    const config = getCollectionConfig(key);
+    if (!config || !entityId) return;
+    await db.collection(config.collection).doc(String(entityId)).delete();
+}
+
+async function readLegacyEntityArray(key) {
+    const current = JSON.parse(localStorage.getItem(key) || '[]');
+    if (Array.isArray(current) && current.length) return current;
+    if (!db) return [];
+    const config = getCollectionConfig(key);
+    const legacyCollection = config ? config.legacyCollection : ENTITY_DOC_COLLECTIONS[key];
+    if (!legacyCollection) return [];
+    try {
+        const snap = await db.collection(legacyCollection).doc('main').get();
+        if (!snap.exists) return [];
+        const data = snap.data() || {};
+        if (typeof data.value !== 'string' || !data.value.trim()) return [];
+        const parsed = JSON.parse(data.value);
+        return Array.isArray(parsed) ? parsed : [];
+    } catch (err) {
+        console.error(`Legacy read failed for ${key}:`, err);
+        return [];
+    }
+}
+
+async function migrateLegacyCollectionData(key) {
+    if (!db || !isCollectionBackedKey(key)) return;
+    const query = getCollectionQuery(key);
+    const config = getCollectionConfig(key);
+    if (!query || !config) return;
+    const existing = await query.limit(1).get();
+    if (!existing.empty) return;
+
+    const legacyItems = await readLegacyEntityArray(key);
+    if (!legacyItems.length) return;
+
+    const batch = db.batch();
+    legacyItems.forEach((item) => {
+        const normalized = normalizeEntityForCloud(key, item);
+        const docId = getEntityId(key, normalized);
+        batch.set(db.collection(config.collection).doc(String(docId)), {
+            ...normalized,
+            updatedAt: normalized.updatedAt || normalized.date || normalized.rxDate || new Date().toISOString()
+        }, { merge: true });
+    });
+    await batch.commit();
+}
+
+async function loadCollectionEntitiesFromCloud(key) {
+    const query = getCollectionQuery(key);
+    if (!query) return [];
+    const snapshot = await query.get();
+    const items = [];
+    snapshot.forEach((doc) => {
+        items.push({ ...doc.data(), _docId: doc.id });
+    });
+    setEntityArrayCache(key, items);
+    firestoreOnline = true;
+    firestoreLastError = "";
+    return items;
+}
+
+function subscribeCollectionRealtime(key) {
+    if (!db || !isCollectionBackedKey(key)) return;
+    const storeId = getCollectionStoreId();
+    const config = getCollectionConfig(key);
+    if (!storeId || !config) return;
+    const subscriptionKey = `${key}:${storeId}`;
+    if (collectionRealtimeUnsubs[subscriptionKey]) return;
+
+    const query = db.collection(config.collection).where('storeId', '==', storeId);
+    collectionRealtimeUnsubs[subscriptionKey] = query.onSnapshot((snapshot) => {
+        const items = [];
+        snapshot.forEach((doc) => {
+            items.push({ ...doc.data(), _docId: doc.id });
+        });
+        setEntityArrayCache(key, items);
+        firestoreOnline = true;
+        firestoreLastError = "";
+    }, (err) => {
+        console.error(`Realtime collection sync failed for ${key}:`, err);
+        firestoreOnline = false;
+        firestoreLastError = (err && err.message) ? err.message : String(err);
+    });
+}
+
+async function initCollectionRealtimeSync() {
+    if (!db) return;
+    for (const key of Object.keys(COLLECTION_SYNC_CONFIG)) {
+        await migrateLegacyCollectionData(key);
+        await loadCollectionEntitiesFromCloud(key);
+        subscribeCollectionRealtime(key);
+    }
 }
 
 function flushEntityViewRefresh() {
@@ -232,6 +473,7 @@ function shouldHydrateEntityArray(raw) {
 
 async function hydrateEntityDocIfNeeded(key) {
     if (!db || !ENTITY_DOC_COLLECTIONS[key]) return;
+    if (isCollectionBackedKey(key)) return;
     if (!shouldHydrateEntityArray(localStorage.getItem(key))) return;
     try {
         const snap = await db.collection(ENTITY_DOC_COLLECTIONS[key]).doc('main').get();
@@ -338,7 +580,10 @@ async function checkCloudConnection() {
 }
 
 function shouldSyncKey(key) {
-    return typeof key === 'string' && key.startsWith('optix') && !CLOUD_SYNC_EXCLUDE_KEYS.includes(key);
+    return typeof key === 'string'
+        && key.startsWith('optix')
+        && !CLOUD_SYNC_EXCLUDE_KEYS.includes(key)
+        && shouldMirrorThroughSnapshot(key);
 }
 
 function isOptixKey(key) {
@@ -505,6 +750,7 @@ async function pullNowFromCloud() {
     let okRtdb = false;
     try {
         if (db) {
+            await initCollectionRealtimeSync();
             await pullEntityDocs();
             await pullFirestoreState();
             okFirestore = true;
@@ -573,7 +819,7 @@ async function flushFirestoreStateQueue() {
 }
 
 function queueEntityDocSync(key, value, isDelete = false) {
-    if (!db || entityDocApplyMode || !ENTITY_DOC_COLLECTIONS[key]) return;
+    if (!db || entityDocApplyMode || !ENTITY_DOC_COLLECTIONS[key] || isCollectionBackedKey(key)) return;
     entityDocQueue.set(key, { key, value, isDelete });
     if (entityDocSyncTimer) clearTimeout(entityDocSyncTimer);
     entityDocSyncTimer = setTimeout(async () => {
@@ -613,7 +859,7 @@ async function pullEntityDocs() {
     if (!db) return;
     try {
         entityDocApplyMode = true;
-        const keys = Object.keys(ENTITY_DOC_COLLECTIONS);
+        const keys = Object.keys(ENTITY_DOC_COLLECTIONS).filter((key) => !isCollectionBackedKey(key));
         for (let i = 0; i < keys.length; i++) {
             const key = keys[i];
             const collection = ENTITY_DOC_COLLECTIONS[key];
@@ -639,7 +885,7 @@ async function pullEntityDocs() {
 function subscribeEntityDocsRealtime() {
     if (!db || window.__optixEntityDocsSubscribed) return;
     window.__optixEntityDocsSubscribed = true;
-    Object.keys(ENTITY_DOC_COLLECTIONS).forEach((key) => {
+    Object.keys(ENTITY_DOC_COLLECTIONS).filter((key) => !isCollectionBackedKey(key)).forEach((key) => {
         const collection = ENTITY_DOC_COLLECTIONS[key];
         db.collection(collection).doc('main').onSnapshot((snap) => {
             const data = snap.exists ? (snap.data() || {}) : {};
@@ -752,6 +998,7 @@ function hookStorageForCloudSync() {
 
 async function initCloudSync() {
     hookStorageForCloudSync();
+    await initCollectionRealtimeSync();
     subscribeEntityDocsRealtime();
     await pullEntityDocs();
     await pullFirestoreState();
@@ -1457,6 +1704,7 @@ async function saveOrder(openInNewTab = false) {
     if(items.length === 0) { alert("Please add at least one valid item!"); return; }
 
     const orders = JSON.parse(localStorage.getItem('optixOrders')) || [];
+    const storeId = getCollectionStoreId();
     let orderId = Date.now();
 
     if (isEdit) {
@@ -1550,6 +1798,7 @@ async function saveOrder(openInNewTab = false) {
     const updatedOrder = {
         id: orderId,
         invoiceNo: invoiceNo,
+        storeId: storeId,
         name: name,
         phone: phone,
         amount: payableNow,
@@ -1565,7 +1814,9 @@ async function saveOrder(openInNewTab = false) {
         discountPercent: discountPercent,
         roundOff: roundOff,
         status: nextStatus,
-        items: items
+        items: items,
+        updatedAt: new Date().toISOString(),
+        createdAt: (editingOriginalOrder && editingOriginalOrder.createdAt) || new Date().toISOString()
     };
 
     if (isEdit) {
@@ -1580,19 +1831,36 @@ async function saveOrder(openInNewTab = false) {
     }
 
     const ordersJson = JSON.stringify(orders);
-    localStorage.setItem('optixOrders', ordersJson);
-    sessionStorage.setItem('optixOrdersSnapshot', ordersJson); // fallback for invoice.html if memory store inaccessible
-    localStorage.setItem('optixProducts', JSON.stringify(productsWorking));
 
     // Save Customer Data (Updates existing or adds new)
     const customers = JSON.parse(localStorage.getItem('optixCustomers')) || [];
     const custIndex = customers.findIndex(c => c.phone === phone);
+    let customerRecord = null;
     if (custIndex > -1) {
         customers[custIndex].name = name; 
         customers[custIndex].lastVisit = updatedOrder.date;
+        customers[custIndex].storeId = storeId;
+        customerRecord = customers[custIndex];
     } else {
-        customers.push({ id: Date.now(), name: name, phone: phone, lastVisit: updatedOrder.date });
+        customerRecord = { id: Date.now(), name: name, phone: phone, lastVisit: updatedOrder.date, storeId: storeId };
+        customers.push(customerRecord);
     }
+
+    try {
+        if (db) {
+            await syncChangedProductsToCloud(products, productsWorking);
+            await upsertEntityToCloud('optixOrders', updatedOrder);
+            if (customerRecord) await upsertEntityToCloud('optixCustomers', customerRecord);
+        }
+    } catch (err) {
+        console.error("Cloud order save failed:", err);
+        alert("Cloud save failed. Bill was not finalized.");
+        return;
+    }
+
+    localStorage.setItem('optixOrders', ordersJson);
+    sessionStorage.setItem('optixOrdersSnapshot', ordersJson); // fallback for invoice.html if memory store inaccessible
+    localStorage.setItem('optixProducts', JSON.stringify(productsWorking));
     localStorage.setItem('optixCustomers', JSON.stringify(customers));
 
     // Ensure entity/state docs are persisted before leaving the page.
@@ -2508,7 +2776,7 @@ function computeOrderTotals(order) {
     return { gross, net, rowDiscount, extraDiscount, totalDiscount };
 }
 
-function initOrderPage() {
+async function initOrderPage() {
     const orderDate = document.getElementById('orderDate');
     if (orderDate && !orderDate.value) {
         orderDate.valueAsDate = new Date();
@@ -2517,7 +2785,7 @@ function initOrderPage() {
     const urlParams = new URLSearchParams(window.location.search);
     const editId = urlParams.get('editId');
     if (editId) {
-        loadOrderForEdit(editId);
+        await loadOrderForEdit(editId);
         return;
     }
 
@@ -2540,9 +2808,20 @@ function setOrderHeaderForEdit(order) {
     document.querySelectorAll('.edit-only').forEach(el => el.style.display = 'inline-block');
 }
 
-function loadOrderForEdit(id) {
-    const orders = JSON.parse(localStorage.getItem('optixOrders')) || [];
-    const order = orders.find(o => o.id == id);
+async function loadOrderForEdit(id) {
+    let orders = JSON.parse(localStorage.getItem('optixOrders')) || [];
+    let order = orders.find(o => o.id == id);
+    if (!order && db) {
+        try {
+            const snap = await db.collection('orders').doc(String(id)).get();
+            if (snap.exists) {
+                order = { ...snap.data(), _docId: snap.id };
+                upsertEntityInCache('optixOrders', order);
+            }
+        } catch (err) {
+            console.error("Order cloud lookup failed:", err);
+        }
+    }
     if (!order) { alert("Order not found."); return; }
 
     editingOrderId = order.id;
@@ -3241,7 +3520,7 @@ function calculateAgeFromDob(dobStr) {
     return age;
 }
 
-function saveLensRxToDatabase(rxData) {
+async function saveLensRxToDatabase(rxData) {
     const nameEl = document.getElementById('cName');
     const phoneEl = document.getElementById('cPhone');
     const dobEl = document.getElementById('cDob');
@@ -3259,6 +3538,7 @@ function saveLensRxToDatabase(rxData) {
 
     const prescriptionData = {
         id: Date.now(),
+        storeId: getCollectionStoreId(),
         patName: patName,
         patMobile: patMobile,
         patAge: patAge,
@@ -3294,6 +3574,13 @@ function saveLensRxToDatabase(rxData) {
 
     const prescriptions = JSON.parse(localStorage.getItem('optixPrescriptions')) || [];
     prescriptions.push(prescriptionData);
+    try {
+        if (db) await upsertEntityToCloud('optixPrescriptions', prescriptionData);
+    } catch (err) {
+        console.error("Cloud prescription save failed:", err);
+        alert("Cloud save failed. Prescription was not saved.");
+        return;
+    }
     localStorage.setItem('optixPrescriptions', JSON.stringify(prescriptions));
 
     if (typeof loadRxDatabase === 'function') loadRxDatabase();
@@ -3441,7 +3728,7 @@ function bindPrescriptionCalcs() {
 }
 
 // Save Final Prescription (Eyewear + Contact Lens)
-function saveFinalRx() {
+async function saveFinalRx() {
     const patName = document.getElementById('patName').value.trim();
     const patMobile = document.getElementById('patMobile').value.trim();
     const patAge = document.getElementById('patAge').value.trim();
@@ -3458,6 +3745,7 @@ function saveFinalRx() {
 
     let prescriptionData = {
         id: Date.now(),
+        storeId: getCollectionStoreId(),
         patName: patName,
         patMobile: patMobile,
         patAge: parseInt(patAge),
@@ -3511,6 +3799,13 @@ function saveFinalRx() {
     // Save to localStorage
     let prescriptions = JSON.parse(localStorage.getItem('optixPrescriptions')) || [];
     prescriptions.push(prescriptionData);
+    try {
+        if (db) await upsertEntityToCloud('optixPrescriptions', prescriptionData);
+    } catch (err) {
+        console.error("Cloud prescription save failed:", err);
+        alert("Cloud save failed. Prescription was not saved.");
+        return;
+    }
     localStorage.setItem('optixPrescriptions', JSON.stringify(prescriptions));
 
     alert("✓ Prescription saved successfully!");
@@ -3604,11 +3899,19 @@ function viewRxDetails(rxId) {
 }
 
 // Delete Prescription
-function deleteRx(rxId) {
+async function deleteRx(rxId) {
     if(!confirm("Delete this prescription?")) return;
-    
+
+    try {
+        if (db) await deleteEntityFromCloud('optixPrescriptions', rxId);
+    } catch (err) {
+        console.error("Cloud prescription delete failed:", err);
+        alert("Cloud delete failed.");
+        return;
+    }
+
     let prescriptions = JSON.parse(localStorage.getItem('optixPrescriptions')) || [];
-    prescriptions = prescriptions.filter(p => p.id !== rxId);
+    prescriptions = prescriptions.filter(p => String(p.id) !== String(rxId));
     localStorage.setItem('optixPrescriptions', JSON.stringify(prescriptions));
     
     loadRxDatabase();
@@ -3616,13 +3919,21 @@ function deleteRx(rxId) {
 }
 
 // --- PART 4: STAFF MANAGEMENT ---
-function saveStaff() {
+async function saveStaff() {
     const name = document.getElementById('sName').value;
     const role = document.getElementById('sRole').value;
     if(!name) { alert("Name is required"); return; }
 
     const staff = JSON.parse(localStorage.getItem('optixStaff')) || [];
-    staff.push({ id: Date.now(), name: name, role: role, date: new Date().toLocaleDateString() });
+    const staffMember = { id: Date.now(), name: name, role: role, date: new Date().toLocaleDateString(), storeId: getCollectionStoreId() };
+    staff.push(staffMember);
+    try {
+        if (db) await upsertEntityToCloud('optixStaff', staffMember);
+    } catch (err) {
+        console.error("Cloud staff save failed:", err);
+        alert("Cloud save failed. Staff was not saved.");
+        return;
+    }
     localStorage.setItem('optixStaff', JSON.stringify(staff));
     
     alert("Staff Added!");
@@ -3644,8 +3955,16 @@ function loadStaff() {
     });
 }
 
-function deleteStaff(index) {
+async function deleteStaff(index) {
     const staff = JSON.parse(localStorage.getItem('optixStaff')) || [];
+    const removed = staff[index];
+    try {
+        if (db && removed) await deleteEntityFromCloud('optixStaff', removed.id);
+    } catch (err) {
+        console.error("Cloud staff delete failed:", err);
+        alert("Cloud delete failed.");
+        return;
+    }
     staff.splice(index, 1);
     localStorage.setItem('optixStaff', JSON.stringify(staff));
     loadStaff();
@@ -3767,7 +4086,7 @@ function runReport(type) {
 }
 
 // --- PART 7: CUSTOMER MANAGEMENT ---
-function addCustomer() {
+async function addCustomer() {
     const name = document.getElementById('newCName').value;
     const phone = document.getElementById('newCPhone').value;
     const city = document.getElementById('newCCity').value;
@@ -3783,14 +4102,24 @@ function addCustomer() {
         return;
     }
 
-    customers.push({
+    const customer = {
         id: Date.now(),
         name: name,
         phone: phone,
         city: city,
         gender: gender,
-        joined: new Date().toLocaleDateString()
-    });
+        joined: new Date().toLocaleDateString(),
+        storeId: getCollectionStoreId()
+    };
+    customers.push(customer);
+
+    try {
+        if (db) await upsertEntityToCloud('optixCustomers', customer);
+    } catch (err) {
+        console.error("Cloud customer save failed:", err);
+        alert("Cloud save failed. Customer was not saved.");
+        return;
+    }
 
     localStorage.setItem('optixCustomers', JSON.stringify(customers));
     alert("Customer Saved!");
@@ -3818,7 +4147,7 @@ function loadCustomers() {
 }
 
 // --- PART 8: EXPENSE MANAGEMENT ---
-function saveExpense() {
+async function saveExpense() {
     const date = document.getElementById('expenseDate').value;
     const desc = document.getElementById('eDesc').value;
     const amount = parseFloat(document.getElementById('eAmount').value);
@@ -3828,7 +4157,22 @@ function saveExpense() {
     if(!desc || !amount) { alert("Fill all details"); return; }
 
     const expenses = JSON.parse(localStorage.getItem('optixExpenses')) || [];
-    expenses.push({ date: date || new Date().toISOString().split('T')[0], desc: desc, amount: amount, mode: mode });
+    const expense = {
+        id: Date.now(),
+        date: date || new Date().toISOString().split('T')[0],
+        desc: desc,
+        amount: amount,
+        mode: mode,
+        storeId: getCollectionStoreId()
+    };
+    expenses.push(expense);
+    try {
+        if (db) await upsertEntityToCloud('optixExpenses', expense);
+    } catch (err) {
+        console.error("Cloud expense save failed:", err);
+        alert("Cloud save failed. Expense was not saved.");
+        return;
+    }
     localStorage.setItem('optixExpenses', JSON.stringify(expenses));
 
     alert("Expense Added");
@@ -4807,10 +5151,17 @@ function confirmOrder(id) {
     }
 }
 
-function deleteOrder(id) {
+async function deleteOrder(id) {
     if(confirm("Are you sure you want to DELETE this order? This cannot be undone.")) {
+        try {
+            if (db) await deleteEntityFromCloud('optixOrders', id);
+        } catch (err) {
+            console.error("Cloud order delete failed:", err);
+            alert("Cloud delete failed.");
+            return;
+        }
         let orders = JSON.parse(localStorage.getItem('optixOrders')) || [];
-        orders = orders.filter(o => o.id !== id);
+        orders = orders.filter(o => String(o.id) !== String(id));
         localStorage.setItem('optixOrders', JSON.stringify(orders));
         loadPendingOrders();
     }

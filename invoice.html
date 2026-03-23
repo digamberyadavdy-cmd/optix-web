@@ -147,6 +147,9 @@
             measurementId: "G-1VMMR61PSX"
         };
         let db = null;
+        function currentStoreId() {
+            return localStorage.getItem('optixStoreId') || sessionStorage.getItem('optixStoreId') || 'default';
+        }
 
         function initFirebaseForInvoice() {
             try {
@@ -183,6 +186,35 @@
                 return true;
             } catch (e) {
                 console.error(`Write ${collectionName} failed:`, e);
+                return false;
+            }
+        }
+
+        async function readOrderDoc(orderId) {
+            if (!db || !orderId) return null;
+            try {
+                const snap = await db.collection('orders').doc(String(orderId)).get();
+                if (!snap.exists) return null;
+                const data = snap.data() || {};
+                if (data.storeId && data.storeId !== currentStoreId()) return null;
+                return { ...data, _docId: snap.id };
+            } catch (e) {
+                console.error("Read order doc failed:", e);
+                return null;
+            }
+        }
+
+        async function writeOrderDoc(order) {
+            if (!db || !order || !order.id) return false;
+            try {
+                await db.collection('orders').doc(String(order.id)).set({
+                    ...order,
+                    storeId: order.storeId || currentStoreId(),
+                    updatedAt: new Date().toISOString()
+                }, { merge: true });
+                return true;
+            } catch (e) {
+                console.error("Write order doc failed:", e);
                 return false;
             }
         }
@@ -259,7 +291,10 @@
             const urlParams = new URLSearchParams(window.location.search);
             const paramId = urlParams.get('orderId');
             const mode = urlParams.get('mode');
-            const orderToLoad = paramId ? orders.find(o => o.id == paramId) : orders[orders.length - 1];
+            let orderToLoad = paramId ? orders.find(o => o.id == paramId) : orders[orders.length - 1];
+            if (!orderToLoad && paramId) {
+                orderToLoad = await readOrderDoc(paramId);
+            }
 
             if (orderToLoad) {
                 activeOrderId = orderToLoad.id;
@@ -369,7 +404,7 @@
             }
 
             sessionStorage.setItem('optixOrdersSnapshot', JSON.stringify(orders));
-            await writeEntityDoc('orders_state', JSON.stringify(orders));
+            await writeOrderDoc(orders[idx]);
 
             // Update UI totals
             document.getElementById('inv-paid').innerText = "Rs " + parseFloat(orders[idx].paid).toFixed(2);
