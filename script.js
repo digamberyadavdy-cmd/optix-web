@@ -138,6 +138,18 @@ const ENTITY_DOC_COLLECTIONS = {
     optixSettings: 'settings_state'
 };
 const ENTITY_ARRAY_KEYS = ['optixOrders', 'optixCustomers', 'optixExpenses', 'optixPrescriptions'];
+const CLOUD_PRIMARY_KEYS = new Set([
+    'optixProducts',
+    'optixOrders',
+    'optixCustomers',
+    'optixExpenses',
+    'optixStaff',
+    'optixPrescriptions',
+    'optixRx',
+    'optixInvoiceSeq'
+]);
+let entityViewRefreshTimer = null;
+const pendingEntityViewRefreshKeys = new Set();
 
 function branchNameToStoreId(name) {
     const raw = String(name || '').trim().toLowerCase();
@@ -149,6 +161,58 @@ function branchNameToStoreId(name) {
 function getLoginBranchId() {
     const branchName = getSettings().branchName || 'Main Branch';
     return branchNameToStoreId(branchName);
+}
+
+function shouldPersistOptixKey(key) {
+    return isOptixKey(key) && !CLOUD_PRIMARY_KEYS.has(key);
+}
+
+function flushEntityViewRefresh() {
+    entityViewRefreshTimer = null;
+    if (pendingEntityViewRefreshKeys.size === 0) return;
+
+    const changedKeys = new Set(pendingEntityViewRefreshKeys);
+    pendingEntityViewRefreshKeys.clear();
+
+    const ordersChanged = changedKeys.has('optixOrders');
+    const customersChanged = changedKeys.has('optixCustomers');
+    const expensesChanged = changedKeys.has('optixExpenses');
+    const staffChanged = changedKeys.has('optixStaff');
+    const prescriptionsChanged = changedKeys.has('optixPrescriptions');
+    const productsChanged = changedKeys.has('optixProducts');
+    const dashboardChanged = ordersChanged || customersChanged || expensesChanged || prescriptionsChanged;
+
+    if (dashboardChanged && document.getElementById('dash-total-sales') && typeof loadDashboard === 'function') {
+        loadDashboard();
+    }
+    if (productsChanged && typeof refreshProductDrivenViews === 'function') {
+        refreshProductDrivenViews();
+    }
+    if (ordersChanged) {
+        if (document.getElementById('pendingTableBody') && typeof loadPendingOrders === 'function') loadPendingOrders();
+        if ((document.getElementById('historyTableBody') || document.getElementById('salesHistoryBody')) && typeof loadSalesHistory === 'function') loadSalesHistory();
+        if (document.getElementById('ledgerTable') && typeof loadAccounts === 'function') loadAccounts();
+        if (window.currentSalesView === 'statement' && typeof buildDailyStatement === 'function') buildDailyStatement();
+    }
+    if (customersChanged && document.getElementById('customerTable') && typeof loadCustomers === 'function') {
+        loadCustomers();
+    }
+    if (expensesChanged && document.getElementById('expenseList') && typeof loadExpenses === 'function') {
+        loadExpenses();
+    }
+    if (staffChanged && document.getElementById('staffList') && typeof loadStaff === 'function') {
+        loadStaff();
+    }
+    if (prescriptionsChanged && document.getElementById('rxDatabaseBody') && typeof loadRxDatabase === 'function') {
+        loadRxDatabase();
+    }
+}
+
+function scheduleEntityViewRefresh(key) {
+    if (!key || !isOptixKey(key)) return;
+    pendingEntityViewRefreshKeys.add(key);
+    if (entityViewRefreshTimer) clearTimeout(entityViewRefreshTimer);
+    entityViewRefreshTimer = setTimeout(flushEntityViewRefresh, 120);
 }
 
 function shouldHydrateEntityArray(raw) {
@@ -558,6 +622,7 @@ async function pullEntityDocs() {
             const data = snap.data() || {};
             if (typeof data.value === 'string') {
                 localStorage.setItem(key, data.value);
+                scheduleEntityViewRefresh(key);
             }
         }
         firestoreOnline = true;
@@ -582,6 +647,7 @@ function subscribeEntityDocsRealtime() {
             entityDocApplyMode = true;
             localStorage.setItem(key, data.value);
             entityDocApplyMode = false;
+            scheduleEntityViewRefresh(key);
         }, (err) => {
             console.error(`Realtime sync failed for ${key}:`, err);
         });
@@ -646,6 +712,7 @@ function hookStorageForCloudSync() {
         if (!isOptixKey(key)) continue;
         const legacyValue = _getItem(key);
         if (legacyValue !== null) optixMemoryStore[key] = legacyValue;
+        if (!shouldPersistOptixKey(key)) _removeItem(key);
     }
 
     localStorage.getItem = function(key) {
@@ -657,7 +724,7 @@ function hookStorageForCloudSync() {
     localStorage.setItem = function(key, value) {
         if (isOptixKey(key)) {
             optixMemoryStore[key] = String(value);
-            _setItem(key, value); // keep a persisted fallback so invoice.html can read without the memory shim
+            if (shouldPersistOptixKey(key)) _setItem(key, value);
             if (shouldSyncKey(key)) scheduleCloudSync();
             if (!entityDocApplyMode) queueEntityDocSync(key, String(value), false);
             if (!firestoreStateApplyMode) queueFirestoreStateSync(key, String(value), false);
@@ -668,7 +735,7 @@ function hookStorageForCloudSync() {
     localStorage.removeItem = function(key) {
         if (isOptixKey(key)) {
             delete optixMemoryStore[key];
-            _removeItem(key);
+            if (shouldPersistOptixKey(key)) _removeItem(key);
             if (shouldSyncKey(key)) scheduleCloudSync();
             if (!entityDocApplyMode) queueEntityDocSync(key, null, true);
             if (!firestoreStateApplyMode) queueFirestoreStateSync(key, null, true);
@@ -966,6 +1033,7 @@ async function performLogout() {
         sessionStorage.removeItem('optixStoreId');
         window.location.href = 'login.html';
     }
+}
 // --- PART 1: PRODUCT MANAGEMENT ---
 
 // A. Generate Unique 8-Char Barcode
@@ -1588,7 +1656,8 @@ function loadAccounts() {
     const orders = JSON.parse(localStorage.getItem('optixOrders')) || [];
     const tbody = document.getElementById('ledgerTable');
     if(!tbody) return;
-    
+
+    tbody.innerHTML = "";
     let totalSales = 0;
     orders.forEach(o => {
         totalSales += o.amount;

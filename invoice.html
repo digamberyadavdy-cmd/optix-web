@@ -242,18 +242,19 @@
 
         document.addEventListener("DOMContentLoaded", async () => {
             initFirebaseForInvoice();
-            let orders = JSON.parse(localStorage.getItem('optixOrders')) || [];
-            if (!orders.length) {
-                const snap = sessionStorage.getItem('optixOrdersSnapshot');
-                if (snap) {
-                    try { orders = JSON.parse(snap) || []; } catch (e) { orders = []; }
-                }
+            let orders = [];
+            const snap = sessionStorage.getItem('optixOrdersSnapshot');
+            if (snap) {
+                try { orders = JSON.parse(snap) || []; } catch (e) { orders = []; }
             }
             if (!orders.length) {
                 const cloudOrdersRaw = await readEntityDoc('orders_state');
                 if (cloudOrdersRaw) {
                     try { orders = JSON.parse(cloudOrdersRaw) || []; } catch (e) { orders = []; }
                 }
+            }
+            if (!orders.length) {
+                try { orders = JSON.parse(localStorage.getItem('optixOrders')) || []; } catch (e) { orders = []; }
             }
             const urlParams = new URLSearchParams(window.location.search);
             const paramId = urlParams.get('orderId');
@@ -341,7 +342,20 @@
                 return;
             }
 
-            const orders = JSON.parse(localStorage.getItem('optixOrders')) || [];
+            let orders = [];
+            const sessionOrders = sessionStorage.getItem('optixOrdersSnapshot');
+            if (sessionOrders) {
+                try { orders = JSON.parse(sessionOrders) || []; } catch (e) { orders = []; }
+            }
+            if (!orders.length) {
+                const cloudOrdersRaw = await readEntityDoc('orders_state');
+                if (cloudOrdersRaw) {
+                    try { orders = JSON.parse(cloudOrdersRaw) || []; } catch (e) { orders = []; }
+                }
+            }
+            if (!orders.length) {
+                try { orders = JSON.parse(localStorage.getItem('optixOrders')) || []; } catch (e) { orders = []; }
+            }
             const idx = orders.findIndex(o => o.id == activeOrderId);
             if (idx === -1) return;
 
@@ -354,7 +368,7 @@
                 orders[idx].status = "Confirmed";
             }
 
-            localStorage.setItem('optixOrders', JSON.stringify(orders));
+            sessionStorage.setItem('optixOrdersSnapshot', JSON.stringify(orders));
             await writeEntityDoc('orders_state', JSON.stringify(orders));
 
             // Update UI totals
