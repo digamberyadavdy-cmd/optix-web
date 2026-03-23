@@ -72,6 +72,7 @@ document.addEventListener("DOMContentLoaded", () => {
         applySettings();
         ensureSettingsModal();
         bindSettingsIcon();
+        startCloudSyncStatusLoop();
         if(document.getElementById('rxDate')) {
             initPrescriptionDate();
             bindPrescriptionCalcs();
@@ -189,6 +190,7 @@ async function hydrateEssentialEntityDocs() {
 let cloudSyncTimer = null;
 let cloudSyncBusy = false;
 let cloudApplyMode = false;
+let cloudSyncStatusTimer = null;
 let firestoreStateApplyMode = false;
 let firestoreStateSyncBusy = false;
 let firestoreStateSyncTimer = null;
@@ -298,6 +300,44 @@ function getCloudSyncConfig() {
         url: normalizedUrl,
         token: (s.cloudSyncToken || '').trim()
     };
+}
+
+function describeCloudSyncState() {
+    const config = getCloudSyncConfig();
+    if (!config.enabled || !config.url) {
+        return { text: 'Cloud sync disabled', state: 'disabled', url: config.url };
+    }
+    if (cloudSyncBusy || cloudApplyMode) {
+        return { text: 'Cloud syncing…', state: 'syncing', url: config.url };
+    }
+    if (!firestoreOnline) {
+        return { text: 'Cloud sync offline', state: 'offline', url: config.url };
+    }
+    return { text: 'Cloud sync online', state: 'online', url: config.url };
+}
+
+function updateCloudSyncStatus() {
+    const status = describeCloudSyncState();
+    document.querySelectorAll('.cloud-sync-pill').forEach(el => {
+        el.innerText = status.text;
+        el.setAttribute('data-state', status.state);
+    });
+    const settingsStatus = document.getElementById('settings-cloud-sync-status');
+    if (settingsStatus) {
+        settingsStatus.innerText = status.text;
+        settingsStatus.dataset.state = status.state;
+    }
+    const urlText = document.getElementById('settings-cloud-sync-url');
+    if (urlText) {
+        urlText.innerText = status.url || 'Not set';
+    }
+}
+
+function startCloudSyncStatusLoop() {
+    updateCloudSyncStatus();
+    if (!cloudSyncStatusTimer) {
+        cloudSyncStatusTimer = setInterval(updateCloudSyncStatus, 2500);
+    }
 }
 
 function getCloudHeaders(token) {

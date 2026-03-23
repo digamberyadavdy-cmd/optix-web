@@ -27,6 +27,29 @@
         .btn-danger { background:#ef4444; color:#fff; }
         .badge { padding:2px 7px; border-radius:999px; font-size:10px; font-weight:700; background:#e0e7ff; color:#3730a3; }
         .muted { color:#6b7280; font-size:12px; }
+        .cloud-sync-summary {
+            margin-top: 10px;
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px dashed #cbd5f5;
+            background: #f8fafc;
+            display:flex;
+            align-items:center;
+            justify-content:space-between;
+            gap:10px;
+            font-size:13px;
+            color:#1f2937;
+        }
+        .cloud-sync-pill {
+            padding:4px 12px;
+            border-radius:999px;
+            font-weight:600;
+            font-size:11px;
+        }
+        .cloud-sync-pill[data-state='online'] { background:#16a34a; color:#fff; }
+        .cloud-sync-pill[data-state='syncing'] { background:#facc15; color:#111; }
+        .cloud-sync-pill[data-state='offline'] { background:#dc2626; color:#fff; }
+        .cloud-sync-pill[data-state='disabled'] { background:#64748b; color:#fff; }
     </style>
     <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>
@@ -98,6 +121,21 @@
                 <h4>Critical Actions</h4>
                 <label class="switch"><span>Allow Delete Order</span><input type="checkbox" id="set_action_delete"></label>
                 <div class="muted" style="margin-top:6px;">Turn this off to prevent accidental deletions.</div>
+            </div>
+        </div>
+
+        <div class="settings-card" style="margin-top:16px;">
+            <h4>Cloud Sync</h4>
+            <label class="switch"><span>Enable Cloud Sync</span><input type="checkbox" id="set_cloud_sync"></label>
+            <div class="form-row">
+                <input id="set_cloud_url" placeholder="Cloud JSON URL (GET/PUT endpoint)" style="padding:8px; font-size:12px;">
+            </div>
+            <div class="form-row">
+                <input id="set_cloud_token" placeholder="Bearer token (optional)" style="padding:8px; font-size:12px;">
+            </div>
+            <div class="cloud-sync-summary">
+                <span id="settings-cloud-sync-status" class="cloud-sync-pill" data-state="disabled">Cloud sync disabled</span>
+                <div>URL: <span id="settings-cloud-sync-url">Not set</span></div>
             </div>
         </div>
 
