@@ -6481,6 +6481,16 @@ function sendWhatsappChat(phone, name, balance, orderId) {
     sendWhatsapp(phone, name, balance, orderId);
 }
 
+// Helper: send invoice link via WhatsApp using only orderId
+function sendInvoiceWhatsApp(orderId) {
+    const order = findOrderById(orderId);
+    if (!order) return alert('Order not found');
+    const phone = order.phone || '';
+    const name = order.name || '';
+    const balance = (parseFloat(order.amount) || 0) - (parseFloat(order.paid) || 0);
+    sendWhatsapp(phone, name, balance, orderId);
+}
+
 function editOrder(id) {
     window.location.href = `order.html?editId=${id}`;
 }
