@@ -470,7 +470,11 @@
                 email: pick(s.storeEmail, s.email, f.storeEmail, f.email),
                 gst: pick(s.storeGst, s.gst, f.storeGst, f.gst),
                 logo: pick(s.storeLogo, f.storeLogo),
-                logoText: pick(s.storeLogoText, f.storeLogoText)
+                logoText: pick(s.storeLogoText, f.storeLogoText),
+
+                // New: persist size and placement so invoice rendering can use them
+                logoSize: pick(s.storeLogoSize, f.storeLogoSize, '150'),
+                logoPlacement: pick(s.storeLogoPlacement, f.storeLogoPlacement, 'left')
             };
         }
 
@@ -481,11 +485,41 @@
             const gstEl = document.getElementById('store-gst');
 
             const logoImg = document.getElementById('invoice-store-logo');
+            const headerContainer = document.querySelector('.header'); // The flex container
+            
+            // Text alignment defaults
+            let textAlignValue = 'left';
+
             if (logoImg && profile.logo) {
                 logoImg.src = profile.logo;
                 logoImg.style.display = 'block';
+                
+                // Apply Size
+                logoImg.style.maxWidth = (profile.logoSize || '150') + 'px';
+                logoImg.style.maxHeight = 'none'; // Override old max-height
+
+                // Apply Placement
+                const placement = profile.logoPlacement || 'left';
+                if (placement === 'center') {
+                    headerContainer.style.flexDirection = 'column';
+                    textAlignValue = 'center';
+                } else if (placement === 'right') {
+                    headerContainer.style.flexDirection = 'row-reverse';
+                    textAlignValue = 'right';
+                } else {
+                    // Left
+                    headerContainer.style.flexDirection = 'row';
+                    textAlignValue = 'left';
+                }
             } else if (logoImg) {
                 logoImg.style.display = 'none';
+                headerContainer.style.flexDirection = 'row';
+                textAlignValue = 'center'; // Fallback if no logo
+            }
+
+            // Apply text alignment to the text wrapper container
+            if (nameEl && nameEl.parentElement) {
+                nameEl.parentElement.style.textAlign = textAlignValue;
             }
 
             if (nameEl) nameEl.textContent = (profile.name || 'OptixCrafter').toUpperCase();
