@@ -144,6 +144,18 @@
                     </div>
                     <span class="muted">Preview will show here. Logo is saved as Base64 into settings.</span>
                 </div>
+                <div class="form-row">
+                    <label for="set_store_logo_size">Logo Size (Width: <span id="logoSizeVal">150px</span>)</label>
+                    <input id="set_store_logo_size" type="range" min="50" max="500" value="150" oninput="document.getElementById('logoSizeVal').innerText = this.value + 'px'; document.getElementById('logoPreview').style.maxWidth = this.value + 'px'; document.getElementById('logoPreview').style.maxHeight = 'none';">
+                </div>
+                <div class="form-row" style="margin-bottom:0;">
+                    <label for="set_store_logo_placement">Logo Placement</label>
+                    <select id="set_store_logo_placement">
+                        <option value="left">Left (Next to Text)</option>
+                        <option value="center">Center (Above Text)</option>
+                        <option value="right">Right (Next to Text)</option>
+                    </select>
+                </div>
             </div>
         </div>
 

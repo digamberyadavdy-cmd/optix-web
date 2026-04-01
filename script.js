@@ -912,6 +912,8 @@ function getSettings() {
         storeEmail: '',
         storeGst: '',
         storeLogoText: '',
+        storeLogoSize: '150',
+        storeLogoPlacement: 'left',
         actionsConfig: getDefaultActionConfig()
     };
     try {
@@ -1875,6 +1877,21 @@ function initSettingsPage() {
         });
     }
 
+    // Add this to load the Size and Placement UI
+    const logoSizeInput = document.getElementById('set_store_logo_size');
+    const logoSizeVal = document.getElementById('logoSizeVal');
+    if (logoSizeInput) {
+        logoSizeInput.value = s.storeLogoSize || '150';
+        if (logoSizeVal) logoSizeVal.innerText = logoSizeInput.value + 'px';
+        if (logoPreview) {
+            logoPreview.style.maxWidth = logoSizeInput.value + 'px';
+            logoPreview.style.maxHeight = 'none';
+        }
+    }
+
+    const logoPlacementInput = document.getElementById('set_store_logo_placement');
+    if (logoPlacementInput) logoPlacementInput.value = s.storeLogoPlacement || 'left';
+
     set('set_page_show_whatsapp', s.showWhatsapp);
     set('set_action_send', actions.sendWhatsapp);
     set('set_action_chat', actions.chatWhatsapp);
@@ -1920,6 +1937,9 @@ async function saveSettingsPage() {
     s.storeEmail = (document.getElementById('set_store_email')?.value || '').trim();
     s.storeGst = (document.getElementById('set_store_gst')?.value || '').trim();
     s.storeLogoText = (document.getElementById('set_store_logo_text')?.value || '').trim().slice(0, 3);
+    // Add these two lines to save size and placement
+    s.storeLogoSize = document.getElementById('set_store_logo_size')?.value || '150';
+    s.storeLogoPlacement = document.getElementById('set_store_logo_placement')?.value || 'left';
     s.showWhatsapp = read('set_page_show_whatsapp');
 
     const actions = s.actionsConfig || getDefaultActionConfig();
