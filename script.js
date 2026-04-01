@@ -2477,10 +2477,23 @@ async function saveOrder(openInNewTab = false) {
         ? "Confirmed"
         : "Pending";
 
+    // Read the manual input from the UI
+    const manualInvoiceNo = document.getElementById('orderNoDisplay').value.trim();
+
+    // Check what the auto-generated number preview looks like
+    let seq = parseInt(localStorage.getItem('optixInvoiceSeq'), 10) || 1;
+    const expectedAutoNo = `INV-${String(seq).padStart(6, '0')}`;
+
     let invoiceNo = (isEdit && editingOriginalOrder && editingOriginalOrder.invoiceNo)
         ? editingOriginalOrder.invoiceNo
         : null;
-    if (settings.autoInvoiceNo !== false) {
+        
+    // 1. If user typed a CUSTOM number (different from the auto-preview)
+    if (manualInvoiceNo && manualInvoiceNo !== expectedAutoNo && manualInvoiceNo !== "Auto-generated" && !manualInvoiceNo.startsWith("FY")) {
+         invoiceNo = manualInvoiceNo;
+    } 
+    // 2. Otherwise, auto-generate it normally (this also increments your database counter)
+    else if (settings.autoInvoiceNo !== false) {
         if (!invoiceNo) invoiceNo = getNextInvoiceNo();
     }
     const shareToken = (isEdit && editingOriginalOrder && editingOriginalOrder.shareToken)
@@ -3517,6 +3530,22 @@ async function initOrderPage() {
         await loadOrderForEdit(editId);
         return;
     }
+
+    // --- NEW CODE: PREVIEW THE NEXT INVOICE NUMBER ---
+    try {
+        const settings = getSettings();
+        if (settings.autoInvoiceNo !== false) {
+            let seq = parseInt(localStorage.getItem('optixInvoiceSeq'), 10);
+            if (!seq || seq < 1) seq = 1;
+            const displayBox = document.getElementById('orderNoDisplay');
+            if (displayBox) {
+                displayBox.value = `INV-${String(seq).padStart(6, '0')}`;
+            }
+        }
+    } catch (e) {
+        console.error('Invoice preview failed:', e);
+    }
+    // -------------------------------------------------
 
     editingExistingPaidCash = 0;
     editingExistingPaidUpi = 0;
