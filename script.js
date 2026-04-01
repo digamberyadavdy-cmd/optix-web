@@ -3014,12 +3014,14 @@ function loadDashboard() {
 function loadSalesHistory() {
     const orders = JSON.parse(localStorage.getItem('optixOrders')) || [];
     
-    // 1. Standalone Page View (Simple 6-Column Layout)
+    // 1. Standalone Page View (Simple 6-Column Layout WITH Icons)
     const standaloneTbody = document.getElementById('salesHistoryBody');
     if (standaloneTbody) {
         let htmlContent = "";
-        orders.slice().reverse().forEach(o => {
-            const balance = (parseFloat(o.amount) || 0) - (parseFloat(o.paid) || 0);
+        orders.reverse().forEach((o, index) => {
+            const balance = o.amount - o.paid;
+            
+            // We use the action-grid classes here to bring back the colourful icons
             htmlContent += `
                 <tr>
                     <td>${new Date(o.date).toLocaleDateString()}</td>
@@ -3028,9 +3030,12 @@ function loadSalesHistory() {
                     <td>Rs ${o.paid}</td>
                     <td style="color:${balance > 0 ? 'red' : 'green'}; font-weight:bold;">Rs ${balance.toFixed(2)}</td>
                     <td>
-                        <button onclick="openInvoiceNewTab('${o.id}')" style="cursor:pointer; background:#2563eb; color:white; border:none; padding:5px 10px; border-radius:3px;">
-                            <i class="fas fa-print"></i> Print
-                        </button>
+                        <div class="action-grid" style="display:flex; gap:5px; justify-content:center;">
+                            <button onclick="confirmOrder('${o.id}')" class="act-btn ic-check" title="Confirm" style="border:none;"><i class="fas fa-check"></i></button>
+                            <button onclick="editOrder('${o.id}')" class="act-btn ic-edit" title="Edit" style="border:none;"><i class="fas fa-edit"></i></button>
+                            <button onclick="sendInvoiceWhatsApp('${o.id}')" class="act-btn ic-whatsapp" title="Send WhatsApp" style="border:none;"><i class="fab fa-whatsapp"></i></button>
+                            <button onclick="openInvoiceNewTab('${o.id}')" class="act-btn ic-print" title="Print" style="border:none;"><i class="fas fa-print"></i></button>
+                        </div>
                     </td>
                 </tr>
             `;
