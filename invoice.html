@@ -684,7 +684,8 @@
                         logoImg.src = logoBase64;
                         logoImg.style.display = 'block';
                     }
-                    if (nameEl) nameEl.style.display = 'none';
+                    // Keep the store name visible alongside the logo
+                    if (nameEl) nameEl.style.display = 'block';
                 }
             } catch (e) {
                 console.warn('Invoice logo load failed', e);
