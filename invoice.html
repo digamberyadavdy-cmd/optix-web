@@ -363,6 +363,23 @@
             return { gross, net, rowDiscount, extraDiscount, totalDiscount };
         }
 
+                // Ensure items preserve all fields (rx, barcodes, exact discount amounts)
+                function normalizeItems(items) {
+                    if (!Array.isArray(items)) return [];
+                    return items.map((it) => ({
+                        ...it,
+                        desc: it.desc || it.description || it.name || '-',
+                        qty: it.qty || it.quantity || 0,
+                        price: it.price || it.rate || 0,
+                        disc: it.disc || it.discountPercent || 0,
+                        total: (it.total !== undefined && it.total !== null)
+                            ? it.total
+                            : (it.amount !== undefined && it.amount !== null)
+                                ? it.amount
+                                : ((parseFloat(it.qty)||0)*(parseFloat(it.price)||0)*(1-((parseFloat(it.disc)||0)/100)))
+                    }));
+                }
+
         function parseRxAny(val) {
             if (!val) return null;
             if (typeof val === "object") return val;
@@ -380,33 +397,6 @@
             return null;
         }
 
-        // Try to normalize items from various possible keys/shapes
-        function normalizeItems(order) {
-            if (!order) return [];
-            const candidates = [
-                order.items,
-                order.orderItems,
-                order.cart,
-                order.products,
-                order.lines
-            ].filter(Boolean);
-            let items = [];
-            for (const cand of candidates) {
-                if (Array.isArray(cand)) { items = cand; break; }
-                if (cand && typeof cand === 'object') {
-                    const vals = Object.values(cand);
-                    if (vals.length) { items = vals; break; }
-                }
-            }
-            return items.map((it) => ({
-                desc: it.desc || it.description || it.name || '-',
-                qty: it.qty || it.quantity || 0,
-                price: it.price || it.rate || 0,
-                disc: it.disc || it.discountPercent || 0,
-                total: it.total || it.amount || ((parseFloat(it.qty)||0)*(parseFloat(it.price)||0)*(1-((parseFloat(it.disc)||0)/100)))
-            }));
-        }
-
         function getDefaultSettings() {
             return {
                 storeName: 'OptixCrafter',
@@ -422,8 +412,10 @@
 
         function normalizeStoreProfile(settings) {
             const s = { ...getDefaultSettings(), ...(settings || {}) };
+            const name = (s.storeName || s.storeInvoiceName || s.name || s.branchName || 'OptixCrafter').trim() || 'OptixCrafter';
             return {
-                name: (s.storeInvoiceName || s.branchName || s.storeName || s.name || 'OptixCrafter').trim(),
+                storeName: name,
+                name: name,
                 address: (s.storeAddress || s.address || '').trim(),
                 phone: (s.storePhone || s.phone || '').trim(),
                 email: (s.storeEmail || s.email || '').trim(),
@@ -431,48 +423,63 @@
             };
         }
 
-        function mergeStoreProfileSources(settings, fallback) {
-            const s = settings || {};
+        function mergeStoreProfileSources(primary, fallback) {
+            const p = primary || {};
             const f = fallback || {};
-            const userProfile = getStoredUserProfile() || {};
-            
+            const userProfile = getStoredUserProfile();
+            const placeholderNames = new Set(['main branch', 'cleandekho.com', 'optical store']);
+            const normalizeName = (value) => String(value || '').trim().toLowerCase();
             const pick = (...values) => {
                 for (const value of values) {
-                    if (typeof value === 'string' && value.trim() !== '') {
-                        return value.trim();
-                    }
+                    if (typeof value === 'string' && value.trim()) return value.trim();
                 }
                 return '';
             };
-
+            const pickStoreName = (...values) => {
+                let placeholder = '';
+                for (const value of values) {
+                    if (typeof value !== 'string') continue;
+                    const trimmed = value.trim();
+                    if (!trimmed) continue;
+                    if (!placeholderNames.has(normalizeName(trimmed))) return trimmed;
+                    if (!placeholder) placeholder = trimmed;
+                }
+                return placeholder;
+            };
             return {
-                // Priority: Store Invoice Name -> Branch Name -> Order Snapshot -> User Profile -> OptixCrafter
-                name: pick(
-                    s.storeInvoiceName,
-                    s.branchName,
-                    s.storeName,
-                    s.name,
+                name: pickStoreName(
+                    p.storeName,
+                    p.storeInvoiceName,
+                    p.branchName,
+                    p.name,
+                    f.storeName,
                     f.storeInvoiceName,
                     f.branchName,
-                    f.storeName,
                     f.name,
                     userProfile.storeName,
                     'OptixCrafter'
-                ),
-                address: pick(s.storeAddress, s.address, f.storeAddress, f.address),
-                phone: pick(s.storePhone, s.phone, f.storePhone, f.phone),
-                email: pick(s.storeEmail, s.email, f.storeEmail, f.email),
-                gst: pick(s.storeGst, s.gst, f.storeGst, f.gst)
+                ) || 'OptixCrafter',
+                address: pick(p.storeAddress, p.address, f.storeAddress, f.address),
+                phone: pick(p.storePhone, p.phone, f.storePhone, f.phone),
+                email: pick(p.storeEmail, p.email, f.storeEmail, f.email),
+                gst: pick(p.storeGst, p.gst, f.storeGst, f.gst)
             };
         }
 
-        function applyStoreHeader(profile) {
+        function isPlaceholderName(name) {
+            const placeholderNames = new Set(['main branch', 'cleandekho.com', 'optical store']);
+            const n = String(name || '').trim().toLowerCase();
+            return !n || placeholderNames.has(n);
+        }
+
+        function applyStoreHeader(settings) {
+            const profile = normalizeStoreProfile(settings);
             const nameEl = document.getElementById('store-name');
             const addressEl = document.getElementById('store-address');
             const contactEl = document.getElementById('store-contact');
             const gstEl = document.getElementById('store-gst');
 
-            if (nameEl) nameEl.textContent = (profile.name || 'OptixCrafter').toUpperCase();
+            if (nameEl) nameEl.textContent = profile.name.toUpperCase();
             if (addressEl) addressEl.textContent = profile.address || 'Address: -';
 
             const contactParts = [];
@@ -504,83 +511,39 @@
 
             document.getElementById('inv-name').innerHTML = `Name: <strong>${orderToLoad.name || '-'}</strong>`;
             document.getElementById('inv-phone').innerText = "Phone: " + (orderToLoad.phone || '-');
+            document.getElementById('inv-date').innerText = "Date: " + new Date(orderToLoad.date || new Date().toISOString()).toLocaleDateString();
+
+            const deliveryValue = orderToLoad.deliveryDate
+                ? new Date(orderToLoad.deliveryDate).toLocaleDateString()
+                : '-';
+            document.getElementById('inv-delivery').innerText = `Delivery: ${deliveryValue}`;
 
             let settings = {};
-            const storeDocId = currentStoreId() || resolvedStoreId || requestedStoreId || null;
-
-            // 1. Fetch exact store settings directly from the local browser storage isolation
-            if (storeDocId) {
-                try {
-                    const backupSettings = localStorage.getItem(`__optix_backup__:${storeDocId}:optixSettings`);
-                    if (backupSettings) {
-                        settings = JSON.parse(backupSettings) || {};
-                    }
-                } catch (e) {}
+            try {
+                settings = JSON.parse(localStorage.getItem('optixSettings') || "{}") || {};
+            } catch (e) {
+                settings = {};
             }
-
-            // 2. Fallback to active memory
-            if (Object.keys(settings).length === 0) {
-                try {
-                    settings = JSON.parse(localStorage.getItem('optixSettings') || "{}") || {};
-                } catch (e) {
-                    settings = {};
-                }
-            }
-
-            // 3. Sync with specific store ID's cloud settings
             const cloudSettingsRaw = await readEntityDoc('settings_state');
             if (cloudSettingsRaw) {
                 try { settings = { ...settings, ...(JSON.parse(cloudSettingsRaw) || {}) }; } catch (e) {}
             }
-
-            const formatDate = (val) => {
-                if (!val) return '-';
-                const parsed = new Date(val);
-                if (isNaN(parsed.getTime())) return '-';
-                const fmt = (settings.dateFormat || 'DD/MM/YYYY').toUpperCase();
-                const dd = String(parsed.getDate()).padStart(2, '0');
-                const mm = String(parsed.getMonth() + 1).padStart(2, '0');
-                const yyyy = parsed.getFullYear();
-                switch (fmt) {
-                    case 'MM/DD/YYYY': return `${mm}/${dd}/${yyyy}`;
-                    case 'YYYY-MM-DD': return `${yyyy}-${mm}-${dd}`;
-                    case 'DD-MM-YYYY': return `${dd}-${mm}-${yyyy}`;
-                    default: return `${dd}/${mm}/${yyyy}`;
-                }
-            };
-
-            document.getElementById('inv-date').innerText = "Date: " + formatDate(orderToLoad.date || new Date().toISOString());
-
-            const deliveryValue = formatDate(orderToLoad.deliveryDate);
-            document.getElementById('inv-delivery').innerText = `Delivery: ${deliveryValue}`;
-
-            let effectiveStoreProfile = mergeStoreProfileSources(settings, sharedStoreProfile || orderToLoad.storeProfileSnapshot);
-
-            // 4. Force Admin Store name if settings are totally empty
-            if (db && storeDocId) {
+            const sharedProfile = sharedStoreProfile || orderToLoad.storeProfileSnapshot || null;
+            let effectiveStoreProfile = mergeStoreProfileSources(sharedProfile, settings);
+            if (db && currentStoreId() && isPlaceholderName(effectiveStoreProfile.name)) {
                 try {
-                    const storeSnap = await db.collection('admin_stores').doc(storeDocId).get();
+                    const storeSnap = await db.collection('admin_stores').doc(currentStoreId()).get();
                     if (storeSnap.exists) {
                         const data = storeSnap.data() || {};
                         const storeName = (data.name || '').trim();
-                        const addr = (data.address || '').trim();
-                        const phone = (data.phone || '').trim();
-                        const email = (data.email || '').trim();
-                        const gst = (data.gst || '').trim();
-                        effectiveStoreProfile = {
-                            ...effectiveStoreProfile,
-                            name: storeName || effectiveStoreProfile.name,
-                            address: addr || effectiveStoreProfile.address,
-                            phone: phone || effectiveStoreProfile.phone,
-                            email: email || effectiveStoreProfile.email,
-                            gst: gst || effectiveStoreProfile.gst
-                        };
+                        if (storeName) {
+                            effectiveStoreProfile = { ...effectiveStoreProfile, name: storeName };
+                        }
                     }
                 } catch (e) {
                     console.error("Store profile fetch failed:", e);
                 }
             }
-
             applyStoreHeader(effectiveStoreProfile);
 
             const useAutoInv = settings.autoInvoiceNo !== false;
@@ -589,15 +552,20 @@
                 : String(orderToLoad.id || '').slice(-6);
             document.getElementById('inv-no-display').innerHTML = `Invoice No: <strong>INV-${invNo}</strong>`;
 
-            // Normalize items before rendering
-            orderToLoad.items = normalizeItems(orderToLoad);
-
             const tbody = document.getElementById('inv-items');
             tbody.innerHTML = "";
             const rxBlocks = [];
+            const items = normalizeItems(orderToLoad.items || []);
+            // use normalized items for rendering and totals
+            orderToLoad.items = items;
 
             if (orderToLoad.items && orderToLoad.items.length > 0) {
                 orderToLoad.items.forEach((item, index) => {
+                    // Use exact discount amount if provided, otherwise calculate from percentage
+                    const discAmt = (item.discAmt !== undefined && item.discAmt !== null)
+                        ? parseFloat(item.discAmt) || 0
+                        : ((parseFloat(item.qty) || 0) * (parseFloat(item.price) || 0) * ((parseFloat(item.disc) || 0) / 100));
+
                     tbody.insertAdjacentHTML('beforeend', `
                         <tr>
                             <td>${index + 1}</td>
@@ -605,7 +573,7 @@
                             <td class="text-right">${parseFloat(item.price).toFixed(2)}</td>
                             <td class="text-right">${item.qty}</td>
                             <td class="text-right">${(parseFloat(item.disc) || 0).toFixed(2)}</td>
-                            <td class="text-right">${((parseFloat(item.qty) || 0) * (parseFloat(item.price) || 0) * ((parseFloat(item.disc) || 0) / 100)).toFixed(2)}</td>
+                            <td class="text-right">${discAmt.toFixed(2)}</td>
                             <td class="text-right">${parseFloat(item.total).toFixed(2)}</td>
                         </tr>
                     `);
@@ -689,39 +657,12 @@
                 if (!orders.length) {
                     try { orders = JSON.parse(localStorage.getItem('optixOrders')) || []; } catch (e) { orders = []; }
                 }
-                const storeIdScope = currentStoreId();
-                let scopedOrders = orders;
-                if (storeIdScope) {
-                    const filtered = orders.filter(o => !o.storeId || o.storeId === storeIdScope);
-                    // If filtering drops everything, fall back to full list so the invoice isn't blank
-                    scopedOrders = filtered.length ? filtered : orders;
-                }
-                orderToLoad = paramId ? scopedOrders.find(o => o.id == paramId) : scopedOrders[scopedOrders.length - 1];
+                orders = orders.filter(o => !o.storeId || o.storeId === currentStoreId());
+                orderToLoad = paramId ? orders.find(o => o.id == paramId) : orders[orders.length - 1];
             }
 
             if (!orderToLoad && paramId) {
                 orderToLoad = await readOrderDoc(paramId);
-            }
-
-            // If we have an order but items/details are missing, try additional fallbacks
-            if (orderToLoad && (!Array.isArray(orderToLoad.items) || orderToLoad.items.length === 0)) {
-                // a) direct Firestore fetch by id
-                const cloudOrder = await readOrderDoc(orderToLoad.id || paramId);
-                if (cloudOrder && Array.isArray(cloudOrder.items) && cloudOrder.items.length > 0) {
-                    orderToLoad = { ...cloudOrder };
-                } else {
-                    // b) search in orders_state snapshot (all stores) without strict store filter
-                    const cloudOrdersRaw = await readEntityDoc('orders_state');
-                    if (cloudOrdersRaw) {
-                        try {
-                            const allOrders = JSON.parse(cloudOrdersRaw) || [];
-                            const found = allOrders.find(o => String(o.id) === String(orderToLoad.id || paramId));
-                            if (found && Array.isArray(found.items) && found.items.length > 0) {
-                                orderToLoad = { ...found };
-                            }
-                        } catch (e) {}
-                    }
-                }
             }
 
             if (orderToLoad) {
@@ -732,31 +673,15 @@
         });
 
         async function saveAdditionalPayment() {
-            if (!activeOrderId || !activeOrder) return;
+            if (!activeOrderId) return;
 
             const addCash = parseFloat(document.getElementById('payAddCash').value) || 0;
             const addUpi = parseFloat(document.getElementById('payAddUPI').value) || 0;
             const addBank = parseFloat(document.getElementById('payAddBank').value) || 0;
             const addTotal = addCash + addUpi + addBank;
 
-            // 1. Calculate the exact remaining balance
-            const currentPayable = parseFloat(activeOrder.amount) || 0;
-            const currentPaid = parseFloat(activeOrder.paid) || 0;
-            const remainingDue = Math.max(0, currentPayable - currentPaid);
-
-            // 2. Prevent Overpayment
-            if (remainingDue <= 0) {
-                alert("This invoice is already fully paid!");
-                return;
-            }
-
-            if (addTotal > (remainingDue + 0.01)) {
-                alert(`Payment exceeds balance! You can only pay up to Rs ${remainingDue.toFixed(2)}`);
-                return;
-            }
-
             if (addTotal <= 0) {
-                alert("Please enter a valid payment amount.");
+                alert("Please enter a payment amount.");
                 return;
             }
 
@@ -781,28 +706,13 @@
                 return;
             }
 
-            // 3. Update Payments
             orders[idx].paid = (parseFloat(orders[idx].paid) || 0) + addTotal;
             orders[idx].paidCash = (parseFloat(orders[idx].paidCash) || 0) + addCash;
             orders[idx].paidUpi = (parseFloat(orders[idx].paidUpi) || 0) + addUpi;
             orders[idx].paidBank = (parseFloat(orders[idx].paidBank) || 0) + addBank;
 
-            // 4. Update Payment History for the Daily Statement
-            if (!Array.isArray(orders[idx].paymentHistory)) {
-                orders[idx].paymentHistory = [];
-            }
-            orders[idx].paymentHistory.push({
-                ts: new Date().toISOString(),
-                cash: addCash,
-                upi: addUpi,
-                bank: addBank,
-                total: addTotal
-            });
-
-            // 5. Lock status if fully paid
-            if (orders[idx].paid >= orders[idx].amount - 0.01) {
+            if (orders[idx].paid >= orders[idx].amount) {
                 orders[idx].status = "Confirmed";
-                orders[idx].paid = orders[idx].amount; // Normalize to prevent -0.00
             }
 
             sessionStorage.setItem('optixOrdersSnapshot', JSON.stringify(orders));
@@ -810,14 +720,13 @@
 
             // Update UI totals
             document.getElementById('inv-paid').innerText = "Rs " + parseFloat(orders[idx].paid).toFixed(2);
-            document.getElementById('inv-balance').innerText = "Rs " + Math.max(0, orders[idx].amount - orders[idx].paid).toFixed(2);
+            document.getElementById('inv-balance').innerText = "Rs " + (orders[idx].amount - orders[idx].paid).toFixed(2);
 
             if (orders[idx].status === "Confirmed") {
                 alert("Payment saved. Order confirmed!");
-                window.location.reload(); // Reloads to hide the payment panel
+                window.location.href = "sales_history.html?view=history";
             } else {
                 alert("Payment saved. Balance still pending.");
-                window.location.reload();
             }
         }
 
