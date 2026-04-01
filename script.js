@@ -2175,11 +2175,10 @@ async function saveProductDetailed() {
     await loadProducts(); 
 }
 
-// --- UPDATED LOAD PRODUCTS (With Edit Button) ---
+// --- HIGH SPEED PRODUCTS LOADER ---
 async function loadProducts() {
     const tbody = document.getElementById('productListBody');
     if (!tbody) return;
-    tbody.innerHTML = "";
 
     if (db) subscribeProductsRealtime();
     let products = JSON.parse(localStorage.getItem('optixProducts')) || [];
@@ -2192,14 +2191,14 @@ async function loadProducts() {
         }
     }
     
-    // Get Search Inputs
     const fCat = document.getElementById('fCat') ? document.getElementById('fCat').value.toLowerCase() : "";
     const fCode = document.getElementById('fCode') ? document.getElementById('fCode').value.toLowerCase() : "";
     const fName = document.getElementById('fName') ? document.getElementById('fName').value.toLowerCase() : "";
     const fBrand = document.getElementById('fBrand') ? document.getElementById('fBrand').value.toLowerCase() : "";
 
+    let htmlContent = ""; // Build string
+
     products.forEach((p, index) => {
-        // FILTER LOGIC
         if (fCat && p.category.toLowerCase() !== fCat) return;
         if (fCode && !p.code.toLowerCase().includes(fCode)) return;
         if (fName && !p.name.toLowerCase().includes(fName)) return;
@@ -2207,7 +2206,7 @@ async function loadProducts() {
 
         const descParts = [p.brand, p.name, p.color, p.size].filter(Boolean).join(" - ");
 
-        const row = `
+        htmlContent += `
             <tr>
                 <td><input type="checkbox"></td>
                 <td>${index + 1}</td>
@@ -2226,16 +2225,16 @@ async function loadProducts() {
                     </span>
                 </td>
                 <td style="color:green">${p.status}</td>
-                <td>${p.createdOn.split(',')[0]}</td>
+                <td>${(p.createdOn||'').split(',')[0]}</td>
                 <td>
                     <i class="fas fa-edit" style="color:#ff9800; cursor:pointer; margin-right:10px; font-size:16px;" onclick="editProduct(${index})" title="Edit Item"></i>
-                    
                     <i class="fas fa-trash" style="color:red; cursor:pointer; font-size:16px;" onclick="deleteProduct(${index})" title="Delete Item"></i>
                 </td>
             </tr>
         `;
-        tbody.insertAdjacentHTML('beforeend', row);
     });
+
+    tbody.innerHTML = htmlContent; // Inject once
 }
 
 // --- NEW FUNCTION: Edit Product ---
