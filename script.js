@@ -3011,36 +3011,45 @@ function loadDashboard() {
     // --- BIRTHDAY LOGIC END ---
 }
 
-// --- UPDATED SALES HISTORY LOADER (Fixes Print Button) ---
+// --- UNIFIED SALES HISTORY LOADER (fast, supports tabbed + standalone views) ---
 function loadSalesHistory() {
     const orders = JSON.parse(localStorage.getItem('optixOrders')) || [];
-    const tbody = document.getElementById('salesHistoryBody');
-    if(!tbody) return;
-    
-    tbody.innerHTML = "";
-    
-    // Sort orders so newest appears first
-    orders.reverse().forEach(o => {
-        const balance = o.amount - o.paid;
-        const statusBadge = balance <= 0 
-            ? '<span style="background:green; color:white; padding:2px 6px; border-radius:4px;">Paid</span>' 
-            : '<span style="background:orange; padding:2px 6px; border-radius:4px;">Due</span>';
 
-        tbody.insertAdjacentHTML('beforeend', `
-            <tr>
-                <td>${new Date(o.date).toLocaleDateString()}</td>
-                <td>${o.name}</td>
-                <td>Rs ${o.amount}</td>
-                <td>Rs ${o.paid}</td>
-                <td style="color:${balance > 0 ? 'red' : 'green'}; font-weight:bold;">Rs ${balance.toFixed(2)}</td>
-                <td>
-                    <button onclick="openInvoiceNewTab('${o.id}')" style="cursor:pointer; background:#2563eb; color:white; border:none; padding:5px 10px; border-radius:3px;">
-                        <i class="fas fa-print"></i> Print
-                    </button>
-                </td>
-            </tr>
-        `);
-    });
+    // 1) Old standalone summary table (salesHistoryBody)
+    const salesBody = document.getElementById('salesHistoryBody');
+    if (salesBody) {
+        let html = '';
+        (orders.slice().reverse() || []).forEach(o => {
+            const amount = parseFloat(o.amount || 0) || 0;
+            const paid = parseFloat(o.paid || 0) || 0;
+            const balance = amount - paid;
+            html += '<tr>' +
+                `<td>${new Date(o.date).toLocaleDateString()}</td>` +
+                `<td>${o.name}</td>` +
+                `<td>Rs ${amount.toFixed(2)}</td>` +
+                `<td>Rs ${paid.toFixed(2)}</td>` +
+                `<td style="color:${balance > 0 ? 'red' : 'green'}; font-weight:bold;">Rs ${balance.toFixed(2)}</td>` +
+                `<td><button onclick="openInvoiceNewTab('${o.id}')" style="cursor:pointer;background:#2563eb;color:white;border:none;padding:5px 10px;border-radius:3px;"><i class="fas fa-print"></i> Print</button></td>` +
+            '</tr>';
+        });
+        salesBody.innerHTML = html;
+    }
+
+    // 2) Tabbed/detailed history view (historyTableBody)
+    const historyBody = document.getElementById('historyTableBody');
+    if (historyBody) {
+        const filters = getSalesFilters();
+        const filtered = filterOrders(orders, filters) || [];
+        let html = '';
+        (filtered.slice().reverse() || []).forEach((o, index) => {
+            html += renderOrderRow(o, index, {
+                showConfirm: false,
+                showAdvanceReceipt: false,
+                showDelete: false
+            });
+        });
+        historyBody.innerHTML = html;
+    }
 }
 // --- CUSTOMER SEARCH & AUTO-SUGGESTION ---
 
@@ -6060,42 +6069,21 @@ function loadPendingOrders() {
     const tbody = document.getElementById('pendingTableBody');
     if(!tbody) return;
 
-    tbody.innerHTML = "";
     const filters = getSalesFilters();
     const orders = JSON.parse(localStorage.getItem('optixOrders')) || [];
-    const filtered = filterOrders(orders, filters);
+    const filtered = filterOrders(orders, filters) || [];
 
-    filtered.reverse().forEach((o, index) => {
+    let html = '';
+    (filtered.slice().reverse() || []).forEach((o, index) => {
         const status = o.status || "Pending";
         if (status === "Confirmed") return;
-        const row = renderOrderRow(o, index, {
+        html += renderOrderRow(o, index, {
             showConfirm: true,
             showAdvanceReceipt: true,
             showDelete: true
         });
-        tbody.insertAdjacentHTML('beforeend', row);
     });
-}
-
-function loadSalesHistory() {
-    const tbody = document.getElementById('historyTableBody');
-    if(!tbody) return;
-
-    tbody.innerHTML = "";
-    const filters = getSalesFilters();
-    const orders = JSON.parse(localStorage.getItem('optixOrders')) || [];
-    const filtered = filterOrders(orders, filters);
-
-    filtered.reverse().forEach((o, index) => {
-        const status = o.status || "Pending";
-        if (status !== "Confirmed") return;
-        const row = renderOrderRow(o, index, {
-            showConfirm: false,
-            showAdvanceReceipt: false,
-            showDelete: false
-        });
-        tbody.insertAdjacentHTML('beforeend', row);
-    });
+    tbody.innerHTML = html;
 }
 
 function clearFilters() {

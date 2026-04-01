@@ -263,3 +263,36 @@ tr:nth-child(even) { background-color: #f9fafb; }
 .suggestion-item:hover { background-color: #e1f5fe; color: #01579b; }
 
 .suggestion-item.active { background-color: #e1f5fe; color: #01579b; }
+
+/* Action Grid Buttons */
+.action-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    justify-content: center;
+}
+.act-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 6px;
+    color: #fff;
+    cursor: pointer;
+    text-decoration: none;
+    transition: transform 0.2s, opacity 0.2s;
+}
+.act-btn:hover {
+    transform: scale(1.05);
+    opacity: 0.9;
+    color: #fff;
+}
+.ic-blue { background: #3b82f6; }
+.ic-whatsapp { background: #22c55e; }
+.ic-check { background: #16a34a; }
+.ic-edit { background: #f59e0b; }
+.ic-rupee { background: #8b5cf6; }
+.ic-print { background: #6366f1; }
+.ic-eye { background: #06b6d4; }
+.ic-delete { background: #ef4444; }
