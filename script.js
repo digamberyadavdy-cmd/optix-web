@@ -976,7 +976,8 @@ function mergeStoreProfileSources(settings, fallback) {
         phone: pick(s.storePhone, s.phone, f.storePhone, f.phone),
         email: pick(s.storeEmail, s.email, f.storeEmail, f.email),
         gst: pick(s.storeGst, s.gst, f.storeGst, f.gst),
-        logoText: pick(s.storeLogoText, s.logoText, f.storeLogoText, f.logoText)
+        logoText: pick(s.storeLogoText, s.logoText, f.storeLogoText, f.logoText),
+        storeLogo: pick(s.storeLogo, f.storeLogo)
     };
 }
 
@@ -1843,6 +1844,37 @@ function initSettingsPage() {
     const dateFormatSelect = document.getElementById('set_date_format');
     if (dateFormatSelect) dateFormatSelect.value = s.dateFormat || 'DD/MM/YYYY';
 
+    // Load existing logo (base64) into preview
+    const logoBase64 = s.storeLogo || '';
+    const logoPreview = document.getElementById('logoPreview');
+    const logoHidden = document.getElementById('set_store_logo_base64');
+    const logoInput = document.getElementById('storeLogoInput');
+    if (logoHidden) logoHidden.value = logoBase64 || '';
+    if (logoPreview && logoBase64) {
+        logoPreview.src = logoBase64;
+        logoPreview.style.display = 'block';
+    }
+    if (logoInput) {
+        logoInput.addEventListener('change', (ev) => {
+            const file = ev.target.files && ev.target.files[0];
+            if (!file) return;
+            if (file.size > 1024 * 1024) {
+                alert('Please upload a logo smaller than 1MB.');
+                return;
+            }
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const base64 = e.target.result;
+                if (logoPreview) {
+                    logoPreview.src = base64;
+                    logoPreview.style.display = 'block';
+                }
+                if (logoHidden) logoHidden.value = base64 || '';
+            };
+            reader.readAsDataURL(file);
+        });
+    }
+
     set('set_page_show_whatsapp', s.showWhatsapp);
     set('set_action_send', actions.sendWhatsapp);
     set('set_action_chat', actions.chatWhatsapp);
@@ -1901,6 +1933,9 @@ async function saveSettingsPage() {
     actions.viewRx = read('set_action_rx');
     actions.deleteOrder = read('set_action_delete');
     s.actionsConfig = actions;
+    // Include store logo (base64) if present in hidden input
+    const existingLogoBase64 = document.getElementById('set_store_logo_base64');
+    if (existingLogoBase64) s.storeLogo = existingLogoBase64.value || s.storeLogo || '';
 
     const ok = await saveSettings(s);
     applySettings();
@@ -4853,6 +4888,128 @@ function loadRxDatabase() {
         tbody.appendChild(tr);
     });
 }
+
+// --- Customer History (Search & Load) ---
+async function getCustomerHistory(mobile) {
+    if (!mobile) return [];
+    const clean = String(mobile).replace(/\D/g, '');
+    const results = [];
+
+    try {
+        // 1) Local cache
+        const local = JSON.parse(localStorage.getItem('optixPrescriptions')) || [];
+        (local || []).forEach(rx => {
+            const rxPhone = String(rx.patMobile || rx.mobile || '').replace(/\D/g, '');
+            if (!rxPhone) return;
+            if (rxPhone === clean || rxPhone.endsWith(clean) || clean.endsWith(rxPhone)) {
+                results.push(rx);
+            }
+        });
+
+        // 2) Cloud lookup (if available)
+        if (typeof db !== 'undefined' && db) {
+            try {
+                const storeId = getCollectionStoreId();
+                let query = db.collection('prescriptions').where('patMobile', '==', String(mobile));
+                if (storeId) query = query.where('storeId', '==', storeId);
+                const snap = await query.limit(100).get();
+                snap.forEach(doc => {
+                    const d = { ...doc.data(), _docId: doc.id };
+                    results.push(d);
+                });
+            } catch (err) {
+                // If exact match by patMobile fails (different format), attempt a broader scan
+                try {
+                    const snap = await db.collection('prescriptions').where('storeId', '==', getCollectionStoreId()).limit(200).get();
+                    snap.forEach(doc => {
+                        const d = doc.data() || {};
+                        const rxPhone = String(d.patMobile || d.mobile || '').replace(/\D/g, '');
+                        if (rxPhone && (rxPhone === clean || rxPhone.endsWith(clean) || clean.endsWith(rxPhone))) {
+                            results.push({ ...d, _docId: doc.id });
+                        }
+                    });
+                } catch (e) {
+                    console.warn('Cloud history fetch fallback failed', e);
+                }
+            }
+        }
+    } catch (err) {
+        console.error('getCustomerHistory failed', err);
+    }
+
+    // Dedupe by id or rxDate+patMobile
+    const seen = new Map();
+    results.forEach(item => {
+        const key = String(item.id || item._docId || (item.rxDate || item.rxDateTime || '') + '|' + (item.patMobile || '') );
+        if (!seen.has(key)) seen.set(key, item);
+    });
+
+    const merged = Array.from(seen.values()).map(it => ({
+        id: it.id || it._docId || Date.now(),
+        rxDate: it.rxDate || it.rxDateTime || it.date || '',
+        patName: it.patName || it.name || '',
+        patMobile: it.patMobile || it.mobile || '',
+        rightEye: it.rightEye || it.re || it.right || {},
+        leftEye: it.leftEye || it.le || it.left || {},
+        usage: it.usage || []
+    })).sort((a,b)=>{
+        const ta = new Date(a.rxDate).getTime()||0;
+        const tb = new Date(b.rxDate).getTime()||0;
+        return tb - ta;
+    });
+
+    return merged;
+}
+
+// Wire the History button on the Order page to fetch & display history
+document.addEventListener('DOMContentLoaded', () => {
+    const btn = document.getElementById('btnSearchHistory');
+    if (!btn) return;
+    btn.addEventListener('click', async () => {
+        const mobileEl = document.getElementById('cPhone');
+        const historyContainer = document.getElementById('historyListContainer');
+        const historyList = document.getElementById('historyList');
+        if (!mobileEl || !historyContainer || !historyList) return;
+        const mobile = String(mobileEl.value || '').trim();
+        historyList.innerHTML = '';
+        if (!mobile || mobile.replace(/\D/g, '').length < 6) {
+            alert('Please enter a valid mobile number.');
+            historyContainer.style.display = 'none';
+            return;
+        }
+
+        const records = await getCustomerHistory(mobile);
+        if (!records || !records.length) {
+            alert('No previous history found for this number.');
+            historyContainer.style.display = 'none';
+            return;
+        }
+
+        // Build list
+        records.forEach(rec => {
+            const li = document.createElement('li');
+            li.style.padding = '6px';
+            li.style.borderBottom = '1px solid #eee';
+            li.style.cursor = 'pointer';
+            const d = rec.rxDate ? new Date(rec.rxDate).toLocaleDateString() : '';
+            li.innerText = `${d} — ${rec.patName || ''} ${rec.patMobile ? ' ('+rec.patMobile+')' : ''}`.trim();
+            li.addEventListener('click', () => {
+                // If order page has fill function for lens modal, use it
+                if (typeof fillLensModalFromSavedPrescription === 'function') {
+                    fillLensModalFromSavedPrescription(rec);
+                    const modal = document.getElementById('modalLens');
+                    if (modal) modal.style.display = 'flex';
+                }
+                if (document.getElementById('cPhone')) document.getElementById('cPhone').value = rec.patMobile || '';
+                if (document.getElementById('cName')) document.getElementById('cName').value = rec.patName || '';
+                historyContainer.style.display = 'none';
+            });
+            historyList.appendChild(li);
+        });
+
+        historyContainer.style.display = 'block';
+    });
+});
 
 // View Prescription Details
 function viewRxDetails(rxId) {

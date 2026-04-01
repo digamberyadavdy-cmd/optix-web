@@ -135,6 +135,15 @@
                     <input id="set_store_logo_text" type="text" maxlength="3" placeholder="CO">
                     <span class="muted">Used in the black badge at the top-left.</span>
                 </div>
+                <div class="form-row">
+                    <label for="storeLogoInput">Store Logo (PNG/JPG, ≤1MB)</label>
+                    <input id="storeLogoInput" type="file" accept="image/png, image/jpeg, image/jpg">
+                    <input id="set_store_logo_base64" type="hidden">
+                    <div style="margin-top:10px;">
+                        <img id="logoPreview" style="max-width:150px; max-height:80px; display:none; border:1px solid #e5e7eb; padding:4px; background:#fff;" alt="Store Logo Preview">
+                    </div>
+                    <span class="muted">Preview will show here. Logo is saved as Base64 into settings.</span>
+                </div>
             </div>
         </div>
 

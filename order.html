@@ -202,7 +202,7 @@
             <div class="green-header"><h2 id="orderPageTitle">Create New Order</h2></div>
             
             <div class="order-grid">
-                <div class="order-group"><label>Order No:</label><input type="text" id="orderNoDisplay" value="FY2026-2027/1846" readonly style="background:#f9f9f9"></div>
+                <div class="order-group"><label>Invoice No:</label><input type="text" id="orderNoDisplay" placeholder="Auto-generated"></div>
                 <div class="order-group"><label>Order Date:</label><input type="date" id="orderDate"></div>
                 <div class="order-group"><label>Delivery Date:</label><input type="date" id="deliveryDate"></div>
                 <div class="order-group"><label>Sales Person:</label><select id="salesPerson"><option>Admin</option><option>Staff</option></select></div>
@@ -214,8 +214,14 @@
                     <div class="search-wrap">
                         <input type="text" id="cPhone" placeholder="Start typing mobile..." onkeyup="searchCustomer('phone', event)" autocomplete="off">
                         <button onclick="openSearchModal()"><i class="fas fa-search"></i></button>
+                        <button type="button" id="btnSearchHistory" onclick="toggleHistoryList()" style="margin-left:6px; padding:6px 8px;">History</button>
                     </div>
                     <div id="phoneSug" class="google-suggestions"></div>
+
+                    <div id="historyListContainer" style="display:none; border:1px solid #ccc; padding:10px; margin-top:5px; background:white; position:absolute; z-index:1000; width:calc(100% - 20px);">
+                        <h4 style="margin:0 0 8px 0; font-size:13px;">Select a Previous Prescription:</h4>
+                        <ul id="historyList" style="list-style:none; padding:0; margin:0; max-height:200px; overflow:auto;"></ul>
+                    </div>
                 </div>
 
                 <div class="order-group" style="grid-column: span 2; position:relative;">
@@ -482,6 +488,39 @@
 
 <script src="script.js?v=20260325a"></script>
     <script>
+        function toggleHistoryList(){
+            const c = document.getElementById('historyListContainer');
+            if(!c) return;
+            c.style.display = (c.style.display === 'none' || c.style.display === '') ? 'block' : 'none';
+        }
+
+        function populateHistoryList(items){
+            const ul = document.getElementById('historyList');
+            if(!ul) return;
+            ul.innerHTML = '';
+            (items||[]).forEach(it=>{
+                const li = document.createElement('li');
+                li.style.padding='6px';
+                li.style.borderBottom='1px solid #eee';
+                li.style.cursor='pointer';
+                li.innerText = (it.date ? it.date + ' — ' : '') + (it.summary || it.desc || it.invoice || 'View');
+                li.onclick = ()=>{ selectHistoryItem(it); };
+                ul.appendChild(li);
+            });
+        }
+
+        function selectHistoryItem(it){
+            if(it && (it.patMobile || it.phone)) document.getElementById('cPhone').value = it.patMobile || it.phone;
+            if(it && (it.patName || it.name)) document.getElementById('cName').value = it.patName || it.name;
+            // If available, populate the lens/modal prescription fields
+            if (typeof fillLensModalFromSavedPrescription === 'function') {
+                fillLensModalFromSavedPrescription(it);
+                const modal = document.getElementById('modalLens');
+                if (modal) modal.style.display = 'flex';
+            }
+            toggleHistoryList();
+        }
+
         document.addEventListener("DOMContentLoaded", () => {
             // Live Clock
             setInterval(() => {
