@@ -399,6 +399,7 @@
                 }
             }
             return items.map((it) => ({
+                ...it,
                 desc: it.desc || it.description || it.name || '-',
                 qty: it.qty || it.quantity || 0,
                 price: it.price || it.rate || 0,
