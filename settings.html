@@ -3,6 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <title>Settings - Optix CRM</title>
+    <link rel="icon" type="image/x-icon" href="favicon.ico?v=2">
+    <link rel="shortcut icon" href="favicon.ico?v=2">
+    <link rel="icon" type="image/png" sizes="64x64" href="favicon.png?v=2">
+    <link rel="icon" type="image/svg+xml" href="favicon.svg?v=2">
     <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
@@ -16,7 +20,8 @@
         .settings-card h4 { margin:0 0 10px 0; font-size:14px; color:#111827; }
         .form-row { display:flex; flex-direction:column; gap:6px; margin-bottom:10px; }
         .form-row label { font-weight:600; font-size:12px; color:#374151; }
-        .form-row input[type="text"] { padding:9px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; }
+        .form-row input[type="text"], .form-row textarea { padding:9px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:13px; font-family:inherit; }
+        .form-row textarea { resize:vertical; min-height:72px; }
         .switch { display:flex; align-items:center; justify-content:space-between; padding:9px 10px; border:1px solid #e5e7eb; border-radius:6px; background:#fff; font-size:13px; color:#1f2937; }
         .switch strong { font-size:13px; }
         .switch input { transform: scale(1.15); cursor:pointer; }
@@ -81,17 +86,55 @@
         <div class="settings-header">
             <div>
                 <h2 class="settings-title">Settings</h2>
-                <div class="settings-meta">Configure branch name and action buttons for order tables.</div>
+                <div class="settings-meta">Configure store profile, invoice header, and action buttons.</div>
             </div>
-            <span class="badge">Branch & Actions</span>
+            <span class="badge">Store Profile</span>
         </div>
 
         <div class="settings-card">
-            <h4>Branch</h4>
+            <h4>Store Profile</h4>
             <div class="form-row">
-                <label for="set_branch_name">Branch Name</label>
+                <label for="set_branch_name">Store / Branch Name</label>
                 <input id="set_branch_name" type="text" placeholder="e.g. Cleandekho.com">
-                <span class="muted">Shown in Dashboard branch dropdown and order lists.</span>
+                <span class="muted">Shown in dashboard, invoice header, order lists, and store branding.</span>
+            </div>
+            <div class="form-row">
+                <label for="set_store_invoice_name">Invoice Header Name</label>
+                <input id="set_store_invoice_name" type="text" placeholder="e.g. OptixCrafter">
+                <span class="muted">If set, invoices use this name instead of the branch name.</span>
+            </div>
+            <div class="form-row">
+                <label for="set_date_format">Date Format</label>
+                <select id="set_date_format">
+                    <option value="DD/MM/YYYY">DD/MM/YYYY</option>
+                    <option value="MM/DD/YYYY">MM/DD/YYYY</option>
+                    <option value="YYYY-MM-DD">YYYY-MM-DD</option>
+                    <option value="DD-MM-YYYY">DD-MM-YYYY</option>
+                </select>
+                <span class="muted">Controls the order of day/month/year in invoices and lists.</span>
+            </div>
+            <div class="form-row">
+                <label for="set_store_address">Store Address</label>
+                <textarea id="set_store_address" placeholder="Shop no, street, city, pincode"></textarea>
+            </div>
+            <div class="settings-grid" style="margin-top:0;">
+                <div class="form-row" style="margin-bottom:0;">
+                    <label for="set_store_phone">Phone Number</label>
+                    <input id="set_store_phone" type="text" placeholder="9876543210">
+                </div>
+                <div class="form-row" style="margin-bottom:0;">
+                    <label for="set_store_email">Email</label>
+                    <input id="set_store_email" type="text" placeholder="store@example.com">
+                </div>
+                <div class="form-row" style="margin-bottom:0;">
+                    <label for="set_store_gst">GSTIN</label>
+                    <input id="set_store_gst" type="text" placeholder="22AAAAA0000A1Z5">
+                </div>
+                <div class="form-row" style="margin-bottom:0;">
+                    <label for="set_store_logo_text">Top-Left Logo Text</label>
+                    <input id="set_store_logo_text" type="text" maxlength="3" placeholder="CO">
+                    <span class="muted">Used in the black badge at the top-left.</span>
+                </div>
             </div>
         </div>
 
@@ -146,6 +189,6 @@
         </div>
     </div>
 
-    <script src="script.js"></script>
+<script src="script.js?v=20260325a"></script>
 </body>
 </html>

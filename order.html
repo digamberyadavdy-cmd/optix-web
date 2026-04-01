@@ -3,6 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <title>Create New Order</title>
+    <link rel="icon" type="image/x-icon" href="favicon.ico?v=2">
+    <link rel="shortcut icon" href="favicon.ico?v=2">
+    <link rel="icon" type="image/png" sizes="64x64" href="favicon.png?v=2">
+    <link rel="icon" type="image/svg+xml" href="favicon.svg?v=2">
     <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
@@ -254,7 +258,9 @@
                     <th>Description</th>
                     <th style="width:50px">Qty</th>
                     <th style="width:70px">Price</th>
-                    <th style="width:60px">Disc%</th> <th style="width:80px">Total</th>
+                    <th style="width:60px">Disc%</th>
+                    <th style="width:90px">Disc Rs</th>
+                    <th style="width:80px">Total</th>
                     <th style="width:30px">Del</th>
                 </tr>
             </thead>
@@ -331,8 +337,9 @@
                 
                 <div style="background:#e3f2fd; padding:15px; border-radius:4px;">
                      <div class="popup-form-grid" style="margin-bottom:0; gap:20px;">
-                        <label>Retail Price (Rs):</label><input type="number" id="frPrice" style="font-weight:bold; color:blue;">
-                        <label>Discount (%):</label><input type="number" id="frDisc" placeholder="0" style="color:red;">
+                        <label>Retail Price (Rs):</label><input type="number" id="frPrice" style="font-weight:bold; color:blue;" oninput="updateFrameDiscount('percent')">
+                        <label>Discount (%):</label><input type="number" id="frDisc" placeholder="0" style="color:red;" oninput="updateFrameDiscount('percent')">
+                        <label>Discount (Rs):</label><input type="number" id="frDiscAmt" placeholder="0" style="color:red;" oninput="updateFrameDiscount('amount')">
                     </div>
                 </div>
                 <div style="text-align:center; margin-top:20px;">
@@ -380,9 +387,14 @@
 
                 <div class="popup-form-grid" style="grid-template-columns: 120px 1fr 120px 1fr; gap:15px; margin-bottom:15px;">
                     <label>Customer:</label>
-                    <input id="lnCustName" placeholder="Customer Name">
+                    <input id="lnCustName" placeholder="Customer Name" oninput="populateSavedLensPrescriptionSelect()">
                     <label>Mobile:</label>
-                    <input id="lnCustPhone" placeholder="Mobile No">
+                    <input id="lnCustPhone" placeholder="Mobile No" oninput="populateSavedLensPrescriptionSelect()">
+                </div>
+
+                <div id="savedRxWrap" class="popup-form-grid" style="grid-template-columns: 160px 1fr; gap:10px; margin-bottom:10px; display:none;">
+                    <label>Previous Saved Rx:</label>
+                    <select id="savedRxSelect" onchange="handleSavedRxSelectChange(this)"></select>
                 </div>
 
                 <div id="rxSelectWrap" class="popup-form-grid" style="grid-template-columns: 160px 1fr; gap:10px; margin-bottom:10px; display:none;">
@@ -468,7 +480,7 @@
         </div>
     </div>
 
-    <script src="script.js"></script>
+<script src="script.js?v=20260325a"></script>
     <script>
         document.addEventListener("DOMContentLoaded", () => {
             // Live Clock

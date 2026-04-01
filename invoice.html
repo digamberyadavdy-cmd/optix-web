@@ -3,6 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <title>Invoice Print</title>
+    <link rel="icon" type="image/x-icon" href="favicon.ico?v=2">
+    <link rel="shortcut icon" href="favicon.ico?v=2">
+    <link rel="icon" type="image/png" sizes="64x64" href="favicon.png?v=2">
+    <link rel="icon" type="image/svg+xml" href="favicon.svg?v=2">
     <style>
         body { font-family: 'Helvetica', sans-serif; padding: 20px; max-width: 800px; margin: auto; color: #333; }
         
@@ -40,6 +44,8 @@
         .rx-data-table td, .rx-data-table th { border: 1px solid #000; padding: 5px; }
         .rx-usage { padding: 5px; font-weight: bold; font-size: 13px; border-top: 1px solid #000; }
         .rx-eye-label { font-weight: bold; background: #f9f9f9; width: 40px; }
+        .invoice-status { display: none; margin-bottom: 20px; padding: 12px 14px; border-radius: 6px; background: #fff7ed; border: 1px solid #fdba74; color: #9a3412; font-size: 14px; }
+        .invoice-status.show { display: block; }
     </style>
 <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>
@@ -50,11 +56,13 @@
         <button onclick="window.print()" class="btn-print">🖨️ Print Invoice</button>
         <a href="dashboard.html" class="btn-back">Back to Dashboard</a>
     </div>
+    <div id="invoice-status" class="invoice-status no-print"></div>
 
     <div class="header">
-        <h1>CITY OPTICAL CENTER</h1>
-        <p>Shop No. 12, Main Market Road, City Center - 492001</p>
-        <p>Phone: 98765-43210 | Email: contact@cityoptical.com</p>
+        <h1 id="store-name">OPTICAL STORE</h1>
+        <p id="store-address">Address: -</p>
+        <p id="store-contact">Phone: -</p>
+        <p id="store-gst">GSTIN: -</p>
     </div>
 
     <div class="bill-info">
@@ -147,8 +155,15 @@
             measurementId: "G-1VMMR61PSX"
         };
         let db = null;
+        const invoiceUrlParams = new URLSearchParams(window.location.search);
+        const requestedStoreId = invoiceUrlParams.get('storeId') || '';
+        let resolvedStoreId = requestedStoreId || '';
         function currentStoreId() {
-            return localStorage.getItem('optixStoreId') || sessionStorage.getItem('optixStoreId') || 'default';
+            return resolvedStoreId || localStorage.getItem('optixStoreId') || sessionStorage.getItem('optixStoreId') || 'default';
+        }
+
+        function getStoreScopedDocId() {
+            return currentStoreId() || 'default';
         }
 
         function initFirebaseForInvoice() {
@@ -166,7 +181,7 @@
         async function readEntityDoc(collectionName) {
             if (!db) return null;
             try {
-                const snap = await db.collection(collectionName).doc('main').get();
+                const snap = await db.collection(collectionName).doc(getStoreScopedDocId()).get();
                 if (!snap.exists) return null;
                 const data = snap.data() || {};
                 return (typeof data.value === 'string') ? data.value : null;
@@ -179,7 +194,7 @@
         async function writeEntityDoc(collectionName, valueStr) {
             if (!db) return false;
             try {
-                await db.collection(collectionName).doc('main').set({
+                await db.collection(collectionName).doc(getStoreScopedDocId()).set({
                     value: valueStr,
                     updatedAt: firebase.firestore.FieldValue.serverTimestamp()
                 }, { merge: true });
@@ -196,7 +211,8 @@
                 const snap = await db.collection('orders').doc(String(orderId)).get();
                 if (!snap.exists) return null;
                 const data = snap.data() || {};
-                if (data.storeId && data.storeId !== currentStoreId()) return null;
+                if (requestedStoreId && data.storeId && String(data.storeId) !== requestedStoreId) return null;
+                if (data.storeId) resolvedStoreId = String(data.storeId);
                 return { ...data, _docId: snap.id };
             } catch (e) {
                 console.error("Read order doc failed:", e);
@@ -215,6 +231,98 @@
                 return true;
             } catch (e) {
                 console.error("Write order doc failed:", e);
+                return false;
+            }
+        }
+
+        function base64UrlDecodeJson(raw) {
+            if (!raw) return null;
+            try {
+                const normalized = raw.replace(/-/g, '+').replace(/_/g, '/');
+                const padded = normalized + '='.repeat((4 - (normalized.length % 4)) % 4);
+                const binary = atob(padded);
+                const bytes = Uint8Array.from(binary, (ch) => ch.charCodeAt(0));
+                const json = new TextDecoder().decode(bytes);
+                return JSON.parse(json);
+            } catch (e) {
+                console.error("Invoice payload decode failed:", e);
+                return null;
+            }
+        }
+
+        function getStoredUserProfile() {
+            try {
+                return JSON.parse(localStorage.getItem('optixUserProfile') || sessionStorage.getItem('optixUserProfile') || '{}') || {};
+            } catch {
+                return {};
+            }
+        }
+
+        function readSharedInvoicePayload() {
+            const payload = base64UrlDecodeJson(invoiceUrlParams.get('payload') || '');
+            if (!payload || typeof payload !== 'object') return null;
+            return payload;
+        }
+
+        function generateInvoiceShareToken() {
+            try {
+                const bytes = new Uint8Array(18);
+                crypto.getRandomValues(bytes);
+                return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+            } catch (e) {
+                return `${Date.now().toString(16)}${Math.random().toString(16).slice(2, 16)}`;
+            }
+        }
+
+        async function readPublicInvoiceDoc(token) {
+            if (!db || !token) return null;
+            try {
+                const snap = await db.collection('public_invoices').doc(String(token)).get();
+                if (!snap.exists) return null;
+                const data = snap.data() || {};
+                if (data.storeId) resolvedStoreId = String(data.storeId);
+                return data;
+            } catch (e) {
+                console.error("Read public invoice failed:", e);
+                return null;
+            }
+        }
+
+        async function readPublicInvoiceByOrderId(orderId) {
+            if (!db || !orderId) return null;
+            try {
+                const snap = await db.collection('public_invoice_orders').doc(String(orderId)).get();
+                if (!snap.exists) return null;
+                const data = snap.data() || {};
+                if (data.storeId) resolvedStoreId = String(data.storeId);
+                return data;
+            } catch (e) {
+                console.error("Read public invoice by order failed:", e);
+                return null;
+            }
+        }
+
+        async function writePublicInvoiceSnapshot(order, storeProfile) {
+            if (!db || !order || !order.id) return false;
+            try {
+                const shareToken = order.shareToken || generateInvoiceShareToken();
+                if (!order.shareToken) order.shareToken = shareToken;
+                const payload = {
+                    token: String(shareToken),
+                    active: true,
+                    orderId: String(order.id),
+                    storeId: order.storeId || currentStoreId(),
+                    storeProfile: normalizeStoreProfile(storeProfile),
+                    order: order,
+                    updatedAt: new Date().toISOString()
+                };
+                const batch = db.batch();
+                batch.set(db.collection('public_invoices').doc(String(shareToken)), payload, { merge: true });
+                batch.set(db.collection('public_invoice_orders').doc(String(order.id)), payload, { merge: true });
+                await batch.commit();
+                return true;
+            } catch (e) {
+                console.error("Write public invoice failed:", e);
                 return false;
             }
         }
@@ -272,108 +380,383 @@
             return null;
         }
 
-        document.addEventListener("DOMContentLoaded", async () => {
-            initFirebaseForInvoice();
-            let orders = [];
-            const snap = sessionStorage.getItem('optixOrdersSnapshot');
-            if (snap) {
-                try { orders = JSON.parse(snap) || []; } catch (e) { orders = []; }
-            }
-            if (!orders.length) {
-                const cloudOrdersRaw = await readEntityDoc('orders_state');
-                if (cloudOrdersRaw) {
-                    try { orders = JSON.parse(cloudOrdersRaw) || []; } catch (e) { orders = []; }
+        // Try to normalize items from various possible keys/shapes
+        function normalizeItems(order) {
+            if (!order) return [];
+            const candidates = [
+                order.items,
+                order.orderItems,
+                order.cart,
+                order.products,
+                order.lines
+            ].filter(Boolean);
+            let items = [];
+            for (const cand of candidates) {
+                if (Array.isArray(cand)) { items = cand; break; }
+                if (cand && typeof cand === 'object') {
+                    const vals = Object.values(cand);
+                    if (vals.length) { items = vals; break; }
                 }
             }
-            if (!orders.length) {
-                try { orders = JSON.parse(localStorage.getItem('optixOrders')) || []; } catch (e) { orders = []; }
+            return items.map((it) => ({
+                desc: it.desc || it.description || it.name || '-',
+                qty: it.qty || it.quantity || 0,
+                price: it.price || it.rate || 0,
+                disc: it.disc || it.discountPercent || 0,
+                total: it.total || it.amount || ((parseFloat(it.qty)||0)*(parseFloat(it.price)||0)*(1-((parseFloat(it.disc)||0)/100)))
+            }));
+        }
+
+        function getDefaultSettings() {
+            return {
+                storeName: 'OptixCrafter',
+                branchName: 'Main Branch',
+                storeAddress: '',
+                storePhone: '',
+                storeEmail: '',
+                storeGst: '',
+                storeLogoText: '',
+                autoInvoiceNo: true
+            };
+        }
+
+        function normalizeStoreProfile(settings) {
+            const s = { ...getDefaultSettings(), ...(settings || {}) };
+            return {
+                name: (s.storeInvoiceName || s.branchName || s.storeName || s.name || 'OptixCrafter').trim(),
+                address: (s.storeAddress || s.address || '').trim(),
+                phone: (s.storePhone || s.phone || '').trim(),
+                email: (s.storeEmail || s.email || '').trim(),
+                gst: (s.storeGst || s.gst || '').trim()
+            };
+        }
+
+        function mergeStoreProfileSources(settings, fallback) {
+            const s = settings || {};
+            const f = fallback || {};
+            const userProfile = getStoredUserProfile() || {};
+            
+            const pick = (...values) => {
+                for (const value of values) {
+                    if (typeof value === 'string' && value.trim() !== '') {
+                        return value.trim();
+                    }
+                }
+                return '';
+            };
+
+            return {
+                // Priority: Store Invoice Name -> Branch Name -> Order Snapshot -> User Profile -> OptixCrafter
+                name: pick(
+                    s.storeInvoiceName,
+                    s.branchName,
+                    s.storeName,
+                    s.name,
+                    f.storeInvoiceName,
+                    f.branchName,
+                    f.storeName,
+                    f.name,
+                    userProfile.storeName,
+                    'OptixCrafter'
+                ),
+                address: pick(s.storeAddress, s.address, f.storeAddress, f.address),
+                phone: pick(s.storePhone, s.phone, f.storePhone, f.phone),
+                email: pick(s.storeEmail, s.email, f.storeEmail, f.email),
+                gst: pick(s.storeGst, s.gst, f.storeGst, f.gst)
+            };
+        }
+
+        function applyStoreHeader(profile) {
+            const nameEl = document.getElementById('store-name');
+            const addressEl = document.getElementById('store-address');
+            const contactEl = document.getElementById('store-contact');
+            const gstEl = document.getElementById('store-gst');
+
+            if (nameEl) nameEl.textContent = (profile.name || 'OptixCrafter').toUpperCase();
+            if (addressEl) addressEl.textContent = profile.address || 'Address: -';
+
+            const contactParts = [];
+            if (profile.phone) contactParts.push(`Phone: ${profile.phone}`);
+            if (profile.email) contactParts.push(`Email: ${profile.email}`);
+            if (contactEl) contactEl.textContent = contactParts.join(' | ') || 'Phone: -';
+
+            if (gstEl) gstEl.textContent = profile.gst ? `GSTIN: ${profile.gst}` : 'GSTIN: -';
+        }
+
+        function showInvoiceStatus(message) {
+            const statusEl = document.getElementById('invoice-status');
+            if (!statusEl) return;
+            if (message) {
+                statusEl.textContent = message;
+                statusEl.classList.add('show');
+            } else {
+                statusEl.textContent = '';
+                statusEl.classList.remove('show');
             }
-            const urlParams = new URLSearchParams(window.location.search);
-            const paramId = urlParams.get('orderId');
-            const mode = urlParams.get('mode');
-            let orderToLoad = paramId ? orders.find(o => o.id == paramId) : orders[orders.length - 1];
+        }
+
+        async function renderInvoice(orderToLoad, sharedStoreProfile, mode) {
+            if (!orderToLoad) return;
+            if (orderToLoad.storeId) resolvedStoreId = String(orderToLoad.storeId);
+            activeOrderId = orderToLoad.id;
+            activeOrder = orderToLoad;
+            showInvoiceStatus('');
+
+            document.getElementById('inv-name').innerHTML = `Name: <strong>${orderToLoad.name || '-'}</strong>`;
+            document.getElementById('inv-phone').innerText = "Phone: " + (orderToLoad.phone || '-');
+
+            let settings = {};
+            const storeDocId = currentStoreId() || resolvedStoreId || requestedStoreId || null;
+
+            // 1. Fetch exact store settings directly from the local browser storage isolation
+            if (storeDocId) {
+                try {
+                    const backupSettings = localStorage.getItem(`__optix_backup__:${storeDocId}:optixSettings`);
+                    if (backupSettings) {
+                        settings = JSON.parse(backupSettings) || {};
+                    }
+                } catch (e) {}
+            }
+
+            // 2. Fallback to active memory
+            if (Object.keys(settings).length === 0) {
+                try {
+                    settings = JSON.parse(localStorage.getItem('optixSettings') || "{}") || {};
+                } catch (e) {
+                    settings = {};
+                }
+            }
+
+            // 3. Sync with specific store ID's cloud settings
+            const cloudSettingsRaw = await readEntityDoc('settings_state');
+            if (cloudSettingsRaw) {
+                try { settings = { ...settings, ...(JSON.parse(cloudSettingsRaw) || {}) }; } catch (e) {}
+            }
+
+            const formatDate = (val) => {
+                if (!val) return '-';
+                const parsed = new Date(val);
+                if (isNaN(parsed.getTime())) return '-';
+                const fmt = (settings.dateFormat || 'DD/MM/YYYY').toUpperCase();
+                const dd = String(parsed.getDate()).padStart(2, '0');
+                const mm = String(parsed.getMonth() + 1).padStart(2, '0');
+                const yyyy = parsed.getFullYear();
+                switch (fmt) {
+                    case 'MM/DD/YYYY': return `${mm}/${dd}/${yyyy}`;
+                    case 'YYYY-MM-DD': return `${yyyy}-${mm}-${dd}`;
+                    case 'DD-MM-YYYY': return `${dd}-${mm}-${yyyy}`;
+                    default: return `${dd}/${mm}/${yyyy}`;
+                }
+            };
+
+            document.getElementById('inv-date').innerText = "Date: " + formatDate(orderToLoad.date || new Date().toISOString());
+
+            const deliveryValue = formatDate(orderToLoad.deliveryDate);
+            document.getElementById('inv-delivery').innerText = `Delivery: ${deliveryValue}`;
+
+            let effectiveStoreProfile = mergeStoreProfileSources(settings, sharedStoreProfile || orderToLoad.storeProfileSnapshot);
+
+            // 4. Force Admin Store name if settings are totally empty
+            if (db && storeDocId) {
+                try {
+                    const storeSnap = await db.collection('admin_stores').doc(storeDocId).get();
+                    if (storeSnap.exists) {
+                        const data = storeSnap.data() || {};
+                        const storeName = (data.name || '').trim();
+                        const addr = (data.address || '').trim();
+                        const phone = (data.phone || '').trim();
+                        const email = (data.email || '').trim();
+                        const gst = (data.gst || '').trim();
+                        effectiveStoreProfile = {
+                            ...effectiveStoreProfile,
+                            name: storeName || effectiveStoreProfile.name,
+                            address: addr || effectiveStoreProfile.address,
+                            phone: phone || effectiveStoreProfile.phone,
+                            email: email || effectiveStoreProfile.email,
+                            gst: gst || effectiveStoreProfile.gst
+                        };
+                    }
+                } catch (e) {
+                    console.error("Store profile fetch failed:", e);
+                }
+            }
+
+            applyStoreHeader(effectiveStoreProfile);
+
+            const useAutoInv = settings.autoInvoiceNo !== false;
+            const invNo = (useAutoInv && orderToLoad.invoiceNo)
+                ? orderToLoad.invoiceNo.toString().padStart(6, '0')
+                : String(orderToLoad.id || '').slice(-6);
+            document.getElementById('inv-no-display').innerHTML = `Invoice No: <strong>INV-${invNo}</strong>`;
+
+            // Normalize items before rendering
+            orderToLoad.items = normalizeItems(orderToLoad);
+
+            const tbody = document.getElementById('inv-items');
+            tbody.innerHTML = "";
+            const rxBlocks = [];
+
+            if (orderToLoad.items && orderToLoad.items.length > 0) {
+                orderToLoad.items.forEach((item, index) => {
+                    tbody.insertAdjacentHTML('beforeend', `
+                        <tr>
+                            <td>${index + 1}</td>
+                            <td>${item.desc}</td>
+                            <td class="text-right">${parseFloat(item.price).toFixed(2)}</td>
+                            <td class="text-right">${item.qty}</td>
+                            <td class="text-right">${(parseFloat(item.disc) || 0).toFixed(2)}</td>
+                            <td class="text-right">${((parseFloat(item.qty) || 0) * (parseFloat(item.price) || 0) * ((parseFloat(item.disc) || 0) / 100)).toFixed(2)}</td>
+                            <td class="text-right">${parseFloat(item.total).toFixed(2)}</td>
+                        </tr>
+                    `);
+
+                    const rxObj = parseRxAny(item.rx);
+                    if (rxObj) rxBlocks.push(generateRxTableHTML(rxObj, item.desc || `Item #${index + 1}`, orderToLoad.name));
+                });
+            }
+
+            const totals = computeOrderTotals(orderToLoad);
+            document.getElementById('inv-gross').innerText = "Rs " + totals.gross.toFixed(2);
+            document.getElementById('inv-discount').innerText = "Rs " + totals.totalDiscount.toFixed(2);
+            document.getElementById('inv-total').innerText = "Rs " + parseFloat(orderToLoad.amount || 0).toFixed(2);
+            document.getElementById('inv-paid').innerText = "Rs " + parseFloat(orderToLoad.paid || 0).toFixed(2);
+            document.getElementById('inv-balance').innerText = "Rs " + ((parseFloat(orderToLoad.amount) || 0) - (parseFloat(orderToLoad.paid) || 0)).toFixed(2);
+
+            const panel = document.getElementById('payment-panel');
+            const hasSharedSource = !!(invoiceUrlParams.get('token') || invoiceUrlParams.get('payload'));
+            if (panel) {
+                panel.style.display = (mode === "payment" && !hasSharedSource) ? 'block' : 'none';
+            }
+
+            const existingRxBlock = document.getElementById('rx-shared-container');
+            if (existingRxBlock) existingRxBlock.remove();
+            if (rxBlocks.length > 0) {
+                const footer = document.querySelector('.footer');
+                const rxContainer = document.createElement('div');
+                rxContainer.id = 'rx-shared-container';
+                rxContainer.innerHTML = `<h3 style="text-align:center; text-decoration:underline; margin-top:30px;">PRESCRIPTION DETAILS</h3>` + rxBlocks.join('');
+                document.body.insertBefore(rxContainer, footer);
+            }
+
+            if (!invoiceUrlParams.get('token') && !invoiceUrlParams.get('payload')) {
+                writePublicInvoiceSnapshot(orderToLoad, effectiveStoreProfile);
+            }
+        }
+
+        document.addEventListener("DOMContentLoaded", async () => {
+            initFirebaseForInvoice();
+            const paramId = invoiceUrlParams.get('orderId');
+            const mode = invoiceUrlParams.get('mode');
+            let sharedStoreProfile = null;
+            let orderToLoad = null;
+
+            const inlinePayload = readSharedInvoicePayload();
+            if (inlinePayload && inlinePayload.order) {
+                orderToLoad = inlinePayload.order;
+                sharedStoreProfile = inlinePayload.storeProfile || null;
+                if (orderToLoad.storeId) resolvedStoreId = String(orderToLoad.storeId);
+            }
+
+            const shareToken = invoiceUrlParams.get('token');
+            if (!orderToLoad && shareToken) {
+                const sharedDoc = await readPublicInvoiceDoc(shareToken);
+                if (sharedDoc) {
+                    orderToLoad = sharedDoc.order || null;
+                    sharedStoreProfile = sharedDoc.storeProfile || null;
+                }
+            }
+
+            if (!orderToLoad && paramId) {
+                const publicByOrder = await readPublicInvoiceByOrderId(paramId);
+                if (publicByOrder) {
+                    orderToLoad = publicByOrder.order || null;
+                    sharedStoreProfile = publicByOrder.storeProfile || null;
+                }
+            }
+
+            if (!orderToLoad) {
+                let orders = [];
+                const snap = sessionStorage.getItem('optixOrdersSnapshot');
+                if (snap) {
+                    try { orders = JSON.parse(snap) || []; } catch (e) { orders = []; }
+                }
+                if (!orders.length) {
+                    const cloudOrdersRaw = await readEntityDoc('orders_state');
+                    if (cloudOrdersRaw) {
+                        try { orders = JSON.parse(cloudOrdersRaw) || []; } catch (e) { orders = []; }
+                    }
+                }
+                if (!orders.length) {
+                    try { orders = JSON.parse(localStorage.getItem('optixOrders')) || []; } catch (e) { orders = []; }
+                }
+                const storeIdScope = currentStoreId();
+                let scopedOrders = orders;
+                if (storeIdScope) {
+                    const filtered = orders.filter(o => !o.storeId || o.storeId === storeIdScope);
+                    // If filtering drops everything, fall back to full list so the invoice isn't blank
+                    scopedOrders = filtered.length ? filtered : orders;
+                }
+                orderToLoad = paramId ? scopedOrders.find(o => o.id == paramId) : scopedOrders[scopedOrders.length - 1];
+            }
+
             if (!orderToLoad && paramId) {
                 orderToLoad = await readOrderDoc(paramId);
             }
 
-            if (orderToLoad) {
-                activeOrderId = orderToLoad.id;
-                activeOrder = orderToLoad;
-                // --- 1. Basic Details ---
-                document.getElementById('inv-name').innerHTML = `Name: <strong>${orderToLoad.name}</strong>`;
-                document.getElementById('inv-phone').innerText = "Phone: " + orderToLoad.phone;
-                document.getElementById('inv-date').innerText = "Date: " + new Date(orderToLoad.date).toLocaleDateString();
-                let settings = JSON.parse(localStorage.getItem('optixSettings') || "{}");
-                if (!settings || Object.keys(settings).length === 0) {
-                    const cloudSettingsRaw = await readEntityDoc('settings_state');
-                    if (cloudSettingsRaw) {
-                        try { settings = JSON.parse(cloudSettingsRaw) || {}; } catch (e) {}
+            // If we have an order but items/details are missing, try additional fallbacks
+            if (orderToLoad && (!Array.isArray(orderToLoad.items) || orderToLoad.items.length === 0)) {
+                // a) direct Firestore fetch by id
+                const cloudOrder = await readOrderDoc(orderToLoad.id || paramId);
+                if (cloudOrder && Array.isArray(cloudOrder.items) && cloudOrder.items.length > 0) {
+                    orderToLoad = { ...cloudOrder };
+                } else {
+                    // b) search in orders_state snapshot (all stores) without strict store filter
+                    const cloudOrdersRaw = await readEntityDoc('orders_state');
+                    if (cloudOrdersRaw) {
+                        try {
+                            const allOrders = JSON.parse(cloudOrdersRaw) || [];
+                            const found = allOrders.find(o => String(o.id) === String(orderToLoad.id || paramId));
+                            if (found && Array.isArray(found.items) && found.items.length > 0) {
+                                orderToLoad = { ...found };
+                            }
+                        } catch (e) {}
                     }
                 }
-                const useAutoInv = settings.autoInvoiceNo !== false;
-                const invNo = (useAutoInv && orderToLoad.invoiceNo)
-                    ? orderToLoad.invoiceNo.toString().padStart(6, '0')
-                    : orderToLoad.id.toString().slice(-6);
-                document.getElementById('inv-no-display').innerHTML = `Invoice No: <strong>INV-${invNo}</strong>`;
+            }
 
-                // --- 2. Render Items ---
-                const tbody = document.getElementById('inv-items');
-                tbody.innerHTML = "";
-                const rxBlocks = [];
-
-                if (orderToLoad.items && orderToLoad.items.length > 0) {
-                    orderToLoad.items.forEach((item, index) => {
-                        tbody.insertAdjacentHTML('beforeend', `
-                            <tr>
-                                <td>${index + 1}</td>
-                                <td>${item.desc}</td>
-                                <td class="text-right">${parseFloat(item.price).toFixed(2)}</td>
-                                <td class="text-right">${item.qty}</td>
-                                <td class="text-right">${(parseFloat(item.disc) || 0).toFixed(2)}</td>
-                                <td class="text-right">${((parseFloat(item.qty) || 0) * (parseFloat(item.price) || 0) * ((parseFloat(item.disc) || 0) / 100)).toFixed(2)}</td>
-                                <td class="text-right">${parseFloat(item.total).toFixed(2)}</td>
-                            </tr>
-                        `);
-
-                        const rxObj = parseRxAny(item.rx);
-                        if (rxObj) rxBlocks.push(generateRxTableHTML(rxObj, item.desc || `Item #${index + 1}`, orderToLoad.name));
-                    });
-                }
-
-                // --- 3. Render Totals ---
-                const totals = computeOrderTotals(orderToLoad);
-                document.getElementById('inv-gross').innerText = "Rs " + totals.gross.toFixed(2);
-                document.getElementById('inv-discount').innerText = "Rs " + totals.totalDiscount.toFixed(2);
-                document.getElementById('inv-total').innerText = "Rs " + parseFloat(orderToLoad.amount).toFixed(2);
-                document.getElementById('inv-paid').innerText = "Rs " + parseFloat(orderToLoad.paid).toFixed(2);
-                document.getElementById('inv-balance').innerText = "Rs " + (orderToLoad.amount - orderToLoad.paid).toFixed(2);
-
-                // --- 5. Show Payment Panel if needed ---
-                if (mode === "payment") {
-                    const panel = document.getElementById('payment-panel');
-                    if (panel) panel.style.display = 'block';
-                }
-
-                // --- 4. Append Prescription Section at Bottom ---
-                if (rxBlocks.length > 0) {
-                    const footer = document.querySelector('.footer');
-                    const rxContainer = document.createElement('div');
-                    rxContainer.innerHTML = `<h3 style="text-align:center; text-decoration:underline; margin-top:30px;">PRESCRIPTION DETAILS</h3>` + rxBlocks.join('');
-                    document.body.insertBefore(rxContainer, footer);
-                }
+            if (orderToLoad) {
+                await renderInvoice(orderToLoad, sharedStoreProfile, mode);
+            } else {
+                showInvoiceStatus("Invoice not found. Please open it again from the app to generate a fresh share link.");
             }
         });
 
         async function saveAdditionalPayment() {
-            if (!activeOrderId) return;
+            if (!activeOrderId || !activeOrder) return;
 
             const addCash = parseFloat(document.getElementById('payAddCash').value) || 0;
             const addUpi = parseFloat(document.getElementById('payAddUPI').value) || 0;
             const addBank = parseFloat(document.getElementById('payAddBank').value) || 0;
             const addTotal = addCash + addUpi + addBank;
 
+            // 1. Calculate the exact remaining balance
+            const currentPayable = parseFloat(activeOrder.amount) || 0;
+            const currentPaid = parseFloat(activeOrder.paid) || 0;
+            const remainingDue = Math.max(0, currentPayable - currentPaid);
+
+            // 2. Prevent Overpayment
+            if (remainingDue <= 0) {
+                alert("This invoice is already fully paid!");
+                return;
+            }
+
+            if (addTotal > (remainingDue + 0.01)) {
+                alert(`Payment exceeds balance! You can only pay up to Rs ${remainingDue.toFixed(2)}`);
+                return;
+            }
+
             if (addTotal <= 0) {
-                alert("Please enter a payment amount.");
+                alert("Please enter a valid payment amount.");
                 return;
             }
 
@@ -391,16 +774,35 @@
             if (!orders.length) {
                 try { orders = JSON.parse(localStorage.getItem('optixOrders')) || []; } catch (e) { orders = []; }
             }
+            orders = orders.filter(o => !o.storeId || o.storeId === currentStoreId());
             const idx = orders.findIndex(o => o.id == activeOrderId);
-            if (idx === -1) return;
+            if (idx === -1) {
+                alert("This shared invoice is view-only. Open the order from your account to add payment.");
+                return;
+            }
 
+            // 3. Update Payments
             orders[idx].paid = (parseFloat(orders[idx].paid) || 0) + addTotal;
             orders[idx].paidCash = (parseFloat(orders[idx].paidCash) || 0) + addCash;
             orders[idx].paidUpi = (parseFloat(orders[idx].paidUpi) || 0) + addUpi;
             orders[idx].paidBank = (parseFloat(orders[idx].paidBank) || 0) + addBank;
 
-            if (orders[idx].paid >= orders[idx].amount) {
+            // 4. Update Payment History for the Daily Statement
+            if (!Array.isArray(orders[idx].paymentHistory)) {
+                orders[idx].paymentHistory = [];
+            }
+            orders[idx].paymentHistory.push({
+                ts: new Date().toISOString(),
+                cash: addCash,
+                upi: addUpi,
+                bank: addBank,
+                total: addTotal
+            });
+
+            // 5. Lock status if fully paid
+            if (orders[idx].paid >= orders[idx].amount - 0.01) {
                 orders[idx].status = "Confirmed";
+                orders[idx].paid = orders[idx].amount; // Normalize to prevent -0.00
             }
 
             sessionStorage.setItem('optixOrdersSnapshot', JSON.stringify(orders));
@@ -408,13 +810,14 @@
 
             // Update UI totals
             document.getElementById('inv-paid').innerText = "Rs " + parseFloat(orders[idx].paid).toFixed(2);
-            document.getElementById('inv-balance').innerText = "Rs " + (orders[idx].amount - orders[idx].paid).toFixed(2);
+            document.getElementById('inv-balance').innerText = "Rs " + Math.max(0, orders[idx].amount - orders[idx].paid).toFixed(2);
 
             if (orders[idx].status === "Confirmed") {
                 alert("Payment saved. Order confirmed!");
-                window.location.href = "sales_history.html?view=history";
+                window.location.reload(); // Reloads to hide the payment panel
             } else {
                 alert("Payment saved. Balance still pending.");
+                window.location.reload();
             }
         }
 

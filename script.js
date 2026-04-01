@@ -14,6 +14,8 @@ const firebaseConfig = {
 };
 let db = null;
 let productsRealtimeSubscribed = false;
+let productsRealtimeStoreId = null;
+let productsRealtimeUnsub = null;
 
 // 2. Get current file name
 const path = window.location.pathname;
@@ -47,15 +49,181 @@ function currentStoreId() {
     return localStorage.getItem('optixStoreId') || sessionStorage.getItem('optixStoreId') || null;
 }
 
+function normalizeEmail(value) {
+    return String(value || '').trim().toLowerCase();
+}
+
+function isSuperAdminEmail(email) {
+    return ['digamber.yadav.dy@gmail.com'].includes(normalizeEmail(email));
+}
+
+function hasLocalOptixSession() {
+    return localStorage.getItem('optixLoggedIn') === 'true' || sessionStorage.getItem('optixLoggedIn') === 'true';
+}
+
+function clearStoredUserProfile() {
+    localStorage.removeItem('optixUserProfile');
+    sessionStorage.removeItem('optixUserProfile');
+}
+
+function setStoredUserProfile(profile) {
+    const serialized = JSON.stringify(profile || {});
+    localStorage.setItem('optixUserProfile', serialized);
+    sessionStorage.setItem('optixUserProfile', serialized);
+}
+
+function getStoredUserProfile() {
+    try {
+        return JSON.parse(localStorage.getItem('optixUserProfile') || sessionStorage.getItem('optixUserProfile') || '{}') || {};
+    } catch {
+        return {};
+    }
+}
+
+function clearAuthSessionState() {
+    clearActiveStoreRuntimeMirror();
+    stopStoreRealtimeSync();
+    localStorage.removeItem('optixLoggedIn');
+    sessionStorage.removeItem('optixLoggedIn');
+    localStorage.removeItem('optixStoreId');
+    sessionStorage.removeItem('optixStoreId');
+    localStorage.removeItem('optixSessionStart');
+    sessionStorage.removeItem('optixSessionStart');
+    clearStoredUserProfile();
+}
+
+async function waitForInitialAuthState() {
+    if (typeof firebase === 'undefined' || !firebase.auth) return null;
+    const auth = firebase.auth();
+    if (auth.currentUser) return auth.currentUser;
+    return new Promise((resolve) => {
+        let settled = false;
+        const finish = (user) => {
+            if (settled) return;
+            settled = true;
+            resolve(user || auth.currentUser || null);
+        };
+        let unsubscribe = null;
+        try {
+            unsubscribe = auth.onAuthStateChanged((user) => {
+                if (typeof unsubscribe === 'function') unsubscribe();
+                finish(user);
+            }, () => finish(auth.currentUser || null));
+        } catch {
+            finish(auth.currentUser || null);
+            return;
+        }
+        setTimeout(() => {
+            if (typeof unsubscribe === 'function') unsubscribe();
+            finish(auth.currentUser || null);
+        }, 1200);
+    });
+}
+
+async function ensureFirebaseSession() {
+    if (typeof firebase === 'undefined' || !firebase.auth) return null;
+    return waitForInitialAuthState();
+}
+
+async function loadUserProfileByUid(uid) {
+    if (!db || !uid) return null;
+    const snap = await db.collection('users').doc(uid).get();
+    if (!snap.exists) return null;
+    return { id: snap.id, ...snap.data() };
+}
+
+async function validateStoreSession(profile) {
+    if (!db || !profile || !profile.storeId || profile.role === 'super_admin') return profile;
+    const snap = await db.collection('admin_stores').doc(profile.storeId).get();
+    if (!snap.exists) throw new Error("Store account not found.");
+    const store = snap.data() || {};
+    const status = String(store.status || 'trial').toLowerCase();
+    if (!['active', 'trial'].includes(status)) {
+        throw new Error(`Store access is ${status}.`);
+    }
+    const today = new Date().toISOString().slice(0, 10);
+    if (store.activeUntil && String(store.activeUntil) < today) {
+        throw new Error("Store subscription has expired.");
+    }
+    return {
+        ...profile,
+        storeStatus: status,
+        activeUntil: store.activeUntil || '',
+        storeName: store.name || profile.storeName || ''
+    };
+}
+
+async function syncSessionFromAuthUser(user) {
+    if (!user) {
+        clearAuthSessionState();
+        return null;
+    }
+    const previousStoreId = currentStoreId();
+    const basicProfile = {
+        uid: user.uid,
+        email: normalizeEmail(user.email),
+        name: user.displayName || '',
+        role: isSuperAdminEmail(user.email) ? 'super_admin' : 'staff',
+        storeId: null
+    };
+    if (basicProfile.role !== 'super_admin') {
+        const profile = await loadUserProfileByUid(user.uid);
+        if (!profile) throw new Error("Your account is not provisioned yet.");
+        basicProfile.name = profile.name || user.displayName || '';
+        basicProfile.role = profile.role || 'staff';
+        basicProfile.storeId = profile.storeId || null;
+        basicProfile.storeName = profile.storeName || '';
+        basicProfile.status = profile.status || 'active';
+        if (!basicProfile.storeId) throw new Error("Your account is missing a store assignment.");
+        if (basicProfile.status && String(basicProfile.status).toLowerCase() !== 'active') {
+            throw new Error(`Your account is ${basicProfile.status}.`);
+        }
+        const validated = await validateStoreSession(basicProfile);
+        basicProfile.storeName = validated.storeName || basicProfile.storeName || '';
+    }
+
+    const nextStoreId = basicProfile.storeId || null;
+    clearActiveStoreRuntimeMirror();
+    stopStoreRealtimeSync();
+
+    if (nextStoreId) {
+        localStorage.setItem('optixStoreId', nextStoreId);
+        sessionStorage.setItem('optixStoreId', nextStoreId);
+    } else {
+        localStorage.removeItem('optixStoreId');
+        sessionStorage.removeItem('optixStoreId');
+    }
+    localStorage.setItem('optixLoggedIn', 'true');
+    sessionStorage.setItem('optixLoggedIn', 'true');
+    localStorage.setItem('optixSessionStart', new Date().toISOString());
+    setStoredUserProfile(basicProfile);
+    return basicProfile;
+}
+
 function initAuthGatekeeper() {
     if (typeof firebase === 'undefined' || !firebase.auth) {
         enforceAccessGate(false);
         return;
     }
     try {
-        firebase.auth().onAuthStateChanged((user) => {
-            if (user) localStorage.setItem('optixLoggedIn', 'true');
-            enforceAccessGate(!!user);
+        firebase.auth().onAuthStateChanged(async (user) => {
+            if (!user) {
+                clearAuthSessionState();
+                enforceAccessGate(false);
+                return;
+            }
+            try {
+                await syncSessionFromAuthUser(user);
+                enforceAccessGate(true);
+            } catch (err) {
+                console.error("Session bootstrap failed:", err);
+                clearAuthSessionState();
+                if (!publicPages.includes(page) && page !== "") {
+                    window.location.href = 'login.html';
+                    return;
+                }
+                enforceAccessGate(false);
+            }
         });
     } catch (err) {
         console.error("Auth gate init failed:", err);
@@ -66,28 +234,25 @@ function initAuthGatekeeper() {
 document.addEventListener("DOMContentLoaded", () => {
     initFirebaseServices();
     initAuthGatekeeper();
+    startCloudSyncStatusLoop();
     initCloudSync().then(async () => {
         await hydrateEssentialEntityDocs();
         await ensureProductsCache();
         applySettings();
         ensureSettingsModal();
         bindSettingsIcon();
-        startCloudSyncStatusLoop();
         if(document.getElementById('rxDate')) {
             initPrescriptionDate();
             bindPrescriptionCalcs();
         }
         // 1. Initial Checks for Order Page
-        const today = new Date().toISOString().split('T')[0];
-        if(document.getElementById('orderDate')) document.getElementById('orderDate').value = today;
-        if(document.getElementById('deliveryDate')) document.getElementById('deliveryDate').value = today;
+        if(document.getElementById('billTableBody')) {
+            await initOrderPage();
+        } else {
+            initOrderDateInputs();
+        }
         
         // Auto-add first row if on Order Page
-        if(document.getElementById('billTableBody')) {
-            const tbody = document.getElementById('billTableBody');
-            if(tbody.children.length === 0) addNewRow();
-        }
-
         // 2. Page Loaders - CHECK AND RUN ALL
         if(document.getElementById('dash-total-sales')) loadDashboard();
         if(document.getElementById('productListBody')) loadProducts();
@@ -103,6 +268,10 @@ document.addEventListener("DOMContentLoaded", () => {
         if(document.getElementById('settingsPage')) initSettingsPage();
     }).catch((err) => {
         console.error("App init failed:", err);
+        applySettings();
+        ensureSettingsModal();
+        bindSettingsIcon();
+        updateCloudSyncStatus();
     });
 });
 
@@ -128,6 +297,8 @@ const FIREBASE_PROJECT_ID = 'optixweb-68694';
 const DEFAULT_CLOUD_SYNC_URL = `https://${'{'}FIREBASE_PROJECT_ID}-default-rtdb.firebaseio.com/optixSync.json`;
 const CLOUD_SYNC_EXCLUDE_KEYS = ['optixLoggedIn', 'optixSessionStart', 'tempCustName', 'tempCustPhone'];
 const FIRESTORE_STATE_EXCLUDE_KEYS = ['optixProducts'];
+const OPTIX_BACKUP_PREFIX = '__optix_backup__:';
+const DEFAULT_STORE_STATE_KEYS = ['optixInvoiceSeq', 'optixRx'];
 const optixMemoryStore = Object.create(null);
 const ENTITY_DOC_COLLECTIONS = {
     optixOrders: 'orders_state',
@@ -158,6 +329,7 @@ const COLLECTION_SYNC_KEYS = new Set(Object.keys(COLLECTION_SYNC_CONFIG));
 let entityViewRefreshTimer = null;
 const pendingEntityViewRefreshKeys = new Set();
 const collectionRealtimeUnsubs = Object.create(null);
+const entityDocRealtimeUnsubs = Object.create(null);
 
 function branchNameToStoreId(name) {
     const raw = String(name || '').trim().toLowerCase();
@@ -181,6 +353,192 @@ function shouldMirrorThroughSnapshot(key) {
 
 function shouldPersistOptixKey(key) {
     return isOptixKey(key) && !CLOUD_PRIMARY_KEYS.has(key);
+}
+
+function isStoreScopedCollectionKey(key) {
+    return key === 'optixProducts' || isCollectionBackedKey(key);
+}
+
+function isStoreScopedStateKey(key) {
+    return key === 'optixSettings' || DEFAULT_STORE_STATE_KEYS.includes(key);
+}
+
+function isStoreScopedKey(key) {
+    return isStoreScopedCollectionKey(key) || isStoreScopedStateKey(key);
+}
+
+function getStoreScopeId(storeId = null) {
+    return String(storeId || currentStoreId() || 'global');
+}
+
+function getOptixBackupKey(key, storeId = null) {
+    return `${OPTIX_BACKUP_PREFIX}${getStoreScopeId(storeId)}:${key}`;
+}
+
+function sanitizeStoreScopedCollectionValue(key, value, storeId = null) {
+    const raw = typeof value === 'string'
+        ? value
+        : value == null
+            ? '[]'
+            : JSON.stringify(value);
+    const targetStoreId = storeId || currentStoreId();
+    if (!targetStoreId) return raw;
+    try {
+        const parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed)) return raw;
+        const scoped = parsed.map((item) => {
+            if (!item || typeof item !== 'object') return null;
+            const itemStoreId = item.storeId ? String(item.storeId) : targetStoreId;
+            if (itemStoreId !== targetStoreId) return null;
+            return { ...item, storeId: itemStoreId };
+        }).filter(Boolean);
+        return JSON.stringify(scoped);
+    } catch {
+        return raw;
+    }
+}
+
+function readPersistedOptixBackup(key, storeId = null) {
+    try {
+        return Storage.prototype.getItem.call(window.localStorage, getOptixBackupKey(key, storeId));
+    } catch {
+        return null;
+    }
+}
+
+function writePersistedOptixBackup(key, value, storeId = null) {
+    try {
+        Storage.prototype.setItem.call(window.localStorage, getOptixBackupKey(key, storeId), String(value));
+    } catch (err) {
+        console.error(`Backup persist failed for ${key}:`, err);
+    }
+}
+
+function removePersistedOptixBackup(key, storeId = null) {
+    try {
+        Storage.prototype.removeItem.call(window.localStorage, getOptixBackupKey(key, storeId));
+    } catch (err) {
+        console.error(`Backup removal failed for ${key}:`, err);
+    }
+}
+
+function clearPersistedOptixBackups(storeId = null) {
+    try {
+        const keysToRemove = [];
+        const scopePrefix = storeId ? `${OPTIX_BACKUP_PREFIX}${getStoreScopeId(storeId)}:` : OPTIX_BACKUP_PREFIX;
+        for (let i = 0; i < window.localStorage.length; i++) {
+            const key = Storage.prototype.key.call(window.localStorage, i);
+            if (typeof key === 'string' && key.startsWith(scopePrefix)) {
+                keysToRemove.push(key);
+            }
+        }
+        keysToRemove.forEach((key) => Storage.prototype.removeItem.call(window.localStorage, key));
+    } catch (err) {
+        console.error('Failed to clear local Optix backups:', err);
+    }
+}
+
+function readStoreScopedOptixValue(key, fallbackValue = null) {
+    if (!isStoreScopedKey(key)) return fallbackValue;
+    const storeId = currentStoreId();
+    if (!storeId) {
+        return isStoreScopedCollectionKey(key)
+            ? sanitizeStoreScopedCollectionValue(key, fallbackValue, null)
+            : fallbackValue;
+    }
+    const scopedBackup = readPersistedOptixBackup(key, storeId);
+    if (scopedBackup !== null) {
+        return isStoreScopedCollectionKey(key)
+            ? sanitizeStoreScopedCollectionValue(key, scopedBackup, storeId)
+            : scopedBackup;
+    }
+    if (isStoreScopedCollectionKey(key)) {
+        return sanitizeStoreScopedCollectionValue(key, fallbackValue, storeId);
+    }
+    return null;
+}
+
+function clearActiveStoreRuntimeMirror() {
+    const scopedKeys = [
+        'optixProducts',
+        'optixOrders',
+        'optixCustomers',
+        'optixExpenses',
+        'optixStaff',
+        'optixPrescriptions',
+        'optixRx',
+        'optixSettings',
+        'optixInvoiceSeq'
+    ];
+    scopedKeys.forEach((key) => {
+        delete optixMemoryStore[key];
+        try {
+            Storage.prototype.removeItem.call(window.localStorage, key);
+        } catch {}
+    });
+    sessionStorage.removeItem('optixOrdersSnapshot');
+}
+
+function stopStoreRealtimeSync() {
+    Object.keys(collectionRealtimeUnsubs).forEach((subscriptionKey) => {
+        const unsub = collectionRealtimeUnsubs[subscriptionKey];
+        if (typeof unsub === 'function') {
+            try { unsub(); } catch {}
+        }
+        delete collectionRealtimeUnsubs[subscriptionKey];
+    });
+    Object.keys(entityDocRealtimeUnsubs).forEach((subscriptionKey) => {
+        const unsub = entityDocRealtimeUnsubs[subscriptionKey];
+        if (typeof unsub === 'function') {
+            try { unsub(); } catch {}
+        }
+        delete entityDocRealtimeUnsubs[subscriptionKey];
+    });
+    if (typeof productsRealtimeUnsub === 'function') {
+        try { productsRealtimeUnsub(); } catch {}
+    }
+    productsRealtimeUnsub = null;
+    productsRealtimeStoreId = null;
+    productsRealtimeSubscribed = false;
+    window.__optixEntityDocsSubscribed = false;
+}
+
+function getStoreScopedEntityDocId(key) {
+    if (isCollectionBackedKey(key)) return 'main';
+    return getStoreScopeId(getCollectionStoreId());
+}
+
+function getStoreScopedStateDocId(key) {
+    return `${getStoreScopeId(getCollectionStoreId())}__${key}`;
+}
+
+function getKnownStoreStateKeys() {
+    const discovered = Object.keys(optixMemoryStore).filter((key) => shouldSyncFirestoreStateKey(key));
+    return Array.from(new Set([...DEFAULT_STORE_STATE_KEYS, ...discovered]));
+}
+
+function clearStoreScopedRuntimeCache(storeId = null) {
+    const scopedKeys = [
+        'optixProducts',
+        'optixOrders',
+        'optixCustomers',
+        'optixExpenses',
+        'optixStaff',
+        'optixPrescriptions',
+        'optixRx',
+        'optixSettings',
+        'optixInvoiceSeq'
+    ];
+    scopedKeys.forEach((key) => {
+        delete optixMemoryStore[key];
+        if (shouldPersistOptixKey(key)) {
+            try {
+                Storage.prototype.removeItem.call(window.localStorage, key);
+            } catch {}
+        }
+        removePersistedOptixBackup(key, storeId);
+    });
+    sessionStorage.removeItem('optixOrdersSnapshot');
 }
 
 function getCollectionConfig(key) {
@@ -326,12 +684,20 @@ async function readLegacyEntityArray(key) {
     const legacyCollection = config ? config.legacyCollection : ENTITY_DOC_COLLECTIONS[key];
     if (!legacyCollection) return [];
     try {
-        const snap = await db.collection(legacyCollection).doc('main').get();
+        const snap = await db.collection(legacyCollection).doc(getStoreScopedEntityDocId(key)).get();
         if (!snap.exists) return [];
         const data = snap.data() || {};
         if (typeof data.value !== 'string' || !data.value.trim()) return [];
         const parsed = JSON.parse(data.value);
-        return Array.isArray(parsed) ? parsed : [];
+        if (!Array.isArray(parsed)) return [];
+        const targetStoreId = getCollectionStoreId();
+        const allowUnscopedLegacy = !targetStoreId || targetStoreId === 'default';
+        return parsed.filter((item) => {
+            if (!item || typeof item !== 'object') return false;
+            const itemStoreId = item.storeId ? String(item.storeId) : '';
+            if (itemStoreId) return itemStoreId === targetStoreId;
+            return allowUnscopedLegacy;
+        });
     } catch (err) {
         console.error(`Legacy read failed for ${key}:`, err);
         return [];
@@ -343,6 +709,10 @@ async function migrateLegacyCollectionData(key) {
     const query = getCollectionQuery(key);
     const config = getCollectionConfig(key);
     if (!query || !config) return;
+    const targetStoreId = getCollectionStoreId();
+    if (targetStoreId && targetStoreId !== 'default') {
+        return;
+    }
     const existing = await query.limit(1).get();
     if (!existing.empty) return;
 
@@ -476,7 +846,7 @@ async function hydrateEntityDocIfNeeded(key) {
     if (isCollectionBackedKey(key)) return;
     if (!shouldHydrateEntityArray(localStorage.getItem(key))) return;
     try {
-        const snap = await db.collection(ENTITY_DOC_COLLECTIONS[key]).doc('main').get();
+        const snap = await db.collection(ENTITY_DOC_COLLECTIONS[key]).doc(getStoreScopedEntityDocId(key)).get();
         if (!snap.exists) return;
         const data = snap.data() || {};
         if (typeof data.value === 'string' && data.value.trim()) {
@@ -507,6 +877,8 @@ let entityDocSyncTimer = null;
 const entityDocQueue = new Map();
 let firestoreOnline = false;
 let firestoreLastError = "";
+const PUBLIC_INVOICE_COLLECTION = 'public_invoices';
+const PUBLIC_INVOICE_ORDER_COLLECTION = 'public_invoice_orders';
 
 function getDefaultActionConfig() {
     return {
@@ -533,6 +905,13 @@ function getSettings() {
         cloudSyncUrl: DEFAULT_CLOUD_SYNC_URL,
         cloudSyncToken: '',
         branchName: 'Cleandekho.com',
+        dateFormat: 'DD/MM/YYYY',
+        storeInvoiceName: '',
+        storeAddress: '',
+        storePhone: '',
+        storeEmail: '',
+        storeGst: '',
+        storeLogoText: '',
         actionsConfig: getDefaultActionConfig()
     };
     try {
@@ -546,6 +925,200 @@ function getSettings() {
     } catch (e) {
         return { ...defaults };
     }
+}
+
+function getStoreProfile(settings = null) {
+    const s = settings || getSettings();
+    const userProfile = getStoredUserProfile();
+    const name = (s.storeInvoiceName || s.storeName || s.branchName || s.name || userProfile.storeName || 'OptixCrafter').trim() || 'OptixCrafter';
+    return {
+        storeName: name,
+        name: name,
+        address: (s.storeAddress || s.address || '').trim(),
+        phone: (s.storePhone || s.phone || '').trim(),
+        email: (s.storeEmail || s.email || '').trim(),
+        gst: (s.storeGst || s.gst || '').trim(),
+        logoText: (s.storeLogoText || s.logoText || '').trim()
+    };
+}
+
+// STRICT PRIORITY FOR MULTIPLE STORE IDs:
+// 1. Specific Settings (Invoice Name -> Store Name -> Branch Name)
+// 2. Order Snapshot Fallback
+// 3. Global User Profile Fallback
+// 4. Ultimate Default
+function mergeStoreProfileSources(settings, fallback) {
+    const s = settings || {};
+    const f = fallback || {};
+    const userProfile = getStoredUserProfile();
+
+    const pick = (...values) => {
+        for (const value of values) {
+            if (typeof value === 'string' && value.trim()) return value.trim();
+        }
+        return '';
+    };
+
+    return {
+        name: pick(
+            s.storeInvoiceName,
+            s.storeName,
+            s.branchName,
+            s.name,
+            f.storeInvoiceName,
+            f.storeName,
+            f.branchName,
+            f.name,
+            userProfile.storeName,
+            'OptixCrafter'
+        ),
+        address: pick(s.storeAddress, s.address, f.storeAddress, f.address),
+        phone: pick(s.storePhone, s.phone, f.storePhone, f.phone),
+        email: pick(s.storeEmail, s.email, f.storeEmail, f.email),
+        gst: pick(s.storeGst, s.gst, f.storeGst, f.gst),
+        logoText: pick(s.storeLogoText, s.logoText, f.storeLogoText, f.logoText)
+    };
+}
+
+function getStoreBadgeText(settings = null) {
+    const profile = getStoreProfile(settings);
+    const raw = profile.logoText || profile.name || 'OC';
+    const parts = String(raw).trim().split(/\s+/).filter(Boolean);
+    if (parts.length >= 2) {
+        return (parts[0].charAt(0) + parts[1].charAt(0)).toUpperCase().slice(0, 3);
+    }
+    return String(raw).trim().slice(0, 3).toUpperCase() || 'OC';
+}
+
+function findOrderById(orderId) {
+    const orders = JSON.parse(localStorage.getItem('optixOrders') || '[]');
+    return orders.find((o) => String(o.id) === String(orderId)) || null;
+}
+
+function base64UrlEncodeJson(value) {
+    try {
+        const json = JSON.stringify(value);
+        const bytes = new TextEncoder().encode(json);
+        let binary = '';
+        const chunkSize = 0x8000;
+        for (let i = 0; i < bytes.length; i += chunkSize) {
+            binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+        }
+        return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+    } catch (e) {
+        console.error('Invoice payload encode failed:', e);
+        return '';
+    }
+}
+
+function generateInvoiceShareToken() {
+    try {
+        const bytes = new Uint8Array(18);
+        crypto.getRandomValues(bytes);
+        return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+    } catch (e) {
+        return `${Date.now().toString(16)}${Math.random().toString(16).slice(2, 16)}`;
+    }
+}
+
+function buildInvoiceSharePayload(order, settings = null) {
+    if (!order) return '';
+    const storeProfile = mergeStoreProfileSources(settings, order.storeProfileSnapshot);
+    const payload = {
+        order,
+        storeProfile
+    };
+    return base64UrlEncodeJson(payload);
+}
+
+function persistOrderShareMeta(order) {
+    if (!order || !order.id) return;
+    try {
+        const orders = JSON.parse(localStorage.getItem('optixOrders') || '[]');
+        const idx = orders.findIndex((item) => String(item.id) === String(order.id));
+        if (idx === -1) return;
+        orders[idx] = { ...orders[idx], shareToken: order.shareToken };
+        const serialized = JSON.stringify(orders);
+        localStorage.setItem('optixOrders', serialized);
+        sessionStorage.setItem('optixOrdersSnapshot', serialized);
+        if (typeof upsertEntityInCache === 'function') {
+            upsertEntityInCache('optixOrders', orders[idx]);
+        }
+    } catch (e) {
+        console.error('Persisting invoice share token failed:', e);
+    }
+}
+
+async function savePublicInvoiceSnapshot(order, settings = null) {
+    if (!db || !order || !order.id) return '';
+    const shareToken = order.shareToken || generateInvoiceShareToken();
+    const storeProfile = mergeStoreProfileSources(settings, order.storeProfileSnapshot);
+    const payload = {
+        token: shareToken,
+        active: true,
+        orderId: String(order.id),
+        storeId: order.storeId || getCollectionStoreId() || currentStoreId() || 'default',
+        storeProfile,
+        order: { ...order, shareToken },
+        updatedAt: new Date().toISOString()
+    };
+    const batch = db.batch();
+    batch.set(db.collection(PUBLIC_INVOICE_COLLECTION).doc(shareToken), payload, { merge: true });
+    batch.set(db.collection(PUBLIC_INVOICE_ORDER_COLLECTION).doc(String(order.id)), payload, { merge: true });
+    await batch.commit();
+    return shareToken;
+}
+
+async function ensureShareableInvoiceToken(order, settings = null) {
+    if (!order || !order.id) return '';
+    const shareToken = order.shareToken || generateInvoiceShareToken();
+    if (!order.shareToken) {
+        order.shareToken = shareToken;
+        persistOrderShareMeta(order);
+        if (db) {
+            try {
+                await upsertEntityToCloud('optixOrders', order);
+            } catch (e) {
+                console.error('Order share token sync failed:', e);
+            }
+        }
+    }
+    if (!db) return shareToken;
+    await savePublicInvoiceSnapshot(order, settings);
+    return shareToken;
+}
+
+async function resolveShareableInvoiceUrl(orderId, options = {}) {
+    const order = options.order || findOrderById(orderId);
+    if (!order) return buildInvoiceUrl(orderId, options);
+    const settings = options.settings || getSettings();
+    if (db) {
+        try {
+            const shareToken = await ensureShareableInvoiceToken(order, settings);
+            if (shareToken) {
+                return buildInvoiceUrl(orderId, { ...options, order, token: shareToken, settings });
+            }
+        } catch (e) {
+            console.error('Invoice share URL generation failed:', e);
+        }
+    }
+    return buildInvoiceUrl(orderId, { ...options, order, includePayload: true, settings });
+}
+
+function buildInvoiceUrl(orderId, options = {}) {
+    const params = new URLSearchParams();
+    params.set('orderId', String(orderId));
+    if (options.type) params.set('type', String(options.type));
+    if (options.mode) params.set('mode', String(options.mode));
+    const token = options.token || (options.order && options.order.shareToken) || '';
+    if (token) params.set('token', String(token));
+    const payload = (options.includePayload || !!options.order)
+        ? buildInvoiceSharePayload(options.order, options.settings)
+        : '';
+    if (payload) params.set('payload', payload);
+    const storeId = options.storeId || (options.order && options.order.storeId) || '';
+    if (storeId) params.set('storeId', String(storeId));
+    return `invoice.html?${params.toString()}`;
 }
 
 async function saveSettings(settings) {
@@ -795,7 +1368,7 @@ async function flushFirestoreStateQueue() {
     try {
         const batch = db.batch();
         firestoreStateQueue.forEach((item) => {
-            const ref = db.collection('app_state').doc(item.key);
+            const ref = db.collection('app_state').doc(getStoreScopedStateDocId(item.key));
             if (item.isDelete) {
                 batch.delete(ref);
             } else {
@@ -836,7 +1409,7 @@ async function flushEntityDocQueue() {
         entityDocQueue.forEach((item) => {
             const collection = ENTITY_DOC_COLLECTIONS[item.key];
             if (!collection) return;
-            const ref = db.collection(collection).doc('main');
+            const ref = db.collection(collection).doc(getStoreScopedEntityDocId(item.key));
             batch.set(ref, {
                 value: item.isDelete ? null : item.value,
                 updatedAt: firebase.firestore.FieldValue.serverTimestamp()
@@ -863,7 +1436,7 @@ async function pullEntityDocs() {
         for (let i = 0; i < keys.length; i++) {
             const key = keys[i];
             const collection = ENTITY_DOC_COLLECTIONS[key];
-            const snap = await db.collection(collection).doc('main').get();
+            const snap = await db.collection(collection).doc(getStoreScopedEntityDocId(key)).get();
             if (!snap.exists) continue;
             const data = snap.data() || {};
             if (typeof data.value === 'string') {
@@ -883,11 +1456,20 @@ async function pullEntityDocs() {
 }
 
 function subscribeEntityDocsRealtime() {
-    if (!db || window.__optixEntityDocsSubscribed) return;
-    window.__optixEntityDocsSubscribed = true;
+    if (!db) return;
     Object.keys(ENTITY_DOC_COLLECTIONS).filter((key) => !isCollectionBackedKey(key)).forEach((key) => {
         const collection = ENTITY_DOC_COLLECTIONS[key];
-        db.collection(collection).doc('main').onSnapshot((snap) => {
+        const subscriptionKey = `${key}:${getStoreScopedEntityDocId(key)}`;
+        Object.keys(entityDocRealtimeUnsubs).forEach((existingKey) => {
+            if (!existingKey.startsWith(`${key}:`) || existingKey === subscriptionKey) return;
+            const unsub = entityDocRealtimeUnsubs[existingKey];
+            if (typeof unsub === 'function') {
+                try { unsub(); } catch {}
+            }
+            delete entityDocRealtimeUnsubs[existingKey];
+        });
+        if (entityDocRealtimeUnsubs[subscriptionKey]) return;
+        entityDocRealtimeUnsubs[subscriptionKey] = db.collection(collection).doc(getStoreScopedEntityDocId(key)).onSnapshot((snap) => {
             const data = snap.exists ? (snap.data() || {}) : {};
             if (typeof data.value !== 'string') return;
             entityDocApplyMode = true;
@@ -898,18 +1480,21 @@ function subscribeEntityDocsRealtime() {
             console.error(`Realtime sync failed for ${key}:`, err);
         });
     });
+    window.__optixEntityDocsSubscribed = Object.keys(entityDocRealtimeUnsubs).length > 0;
 }
 
 async function seedFirestoreStateFromLocal() {
     if (!db) return;
     const batch = db.batch();
     let hasData = false;
-    Object.keys(optixMemoryStore).forEach((key) => {
+    getKnownStoreStateKeys().forEach((key) => {
         if (!shouldSyncFirestoreStateKey(key)) return;
+        const value = optixMemoryStore[key];
+        if (typeof value !== 'string') return;
         hasData = true;
-        const ref = db.collection('app_state').doc(key);
+        const ref = db.collection('app_state').doc(getStoreScopedStateDocId(key));
         batch.set(ref, {
-            value: optixMemoryStore[key],
+            value: value,
             updatedAt: firebase.firestore.FieldValue.serverTimestamp()
         }, { merge: true });
     });
@@ -919,19 +1504,21 @@ async function seedFirestoreStateFromLocal() {
 async function pullFirestoreState() {
     if (!db) return;
     try {
-        const snapshot = await db.collection('app_state').get();
-        if (snapshot.empty) {
-            await seedFirestoreStateFromLocal();
-            return;
-        }
         firestoreStateApplyMode = true;
-        snapshot.forEach((doc) => {
-            const data = doc.data() || {};
-            if (!shouldSyncFirestoreStateKey(doc.id)) return;
+        const stateKeys = getKnownStoreStateKeys().filter((key) => shouldSyncFirestoreStateKey(key));
+        let foundAny = false;
+        for (const key of stateKeys) {
+            const snap = await db.collection('app_state').doc(getStoreScopedStateDocId(key)).get();
+            if (!snap.exists) continue;
+            foundAny = true;
+            const data = snap.data() || {};
             if (typeof data.value === 'string') {
-                localStorage.setItem(doc.id, data.value);
+                localStorage.setItem(key, data.value);
             }
-        });
+        }
+        if (!foundAny) {
+            await seedFirestoreStateFromLocal();
+        }
         firestoreOnline = true;
         firestoreLastError = "";
     } catch (err) {
@@ -963,17 +1550,27 @@ function hookStorageForCloudSync() {
 
     localStorage.getItem = function(key) {
         if (isOptixKey(key)) {
-            return Object.prototype.hasOwnProperty.call(optixMemoryStore, key) ? optixMemoryStore[key] : null;
+            if (!Object.prototype.hasOwnProperty.call(optixMemoryStore, key)) {
+                const backupValue = readPersistedOptixBackup(key);
+                if (backupValue !== null) optixMemoryStore[key] = backupValue;
+            }
+            const rawValue = Object.prototype.hasOwnProperty.call(optixMemoryStore, key) ? optixMemoryStore[key] : null;
+            const scopedValue = readStoreScopedOptixValue(key, rawValue);
+            return scopedValue !== null ? scopedValue : rawValue;
         }
         return _getItem(key);
     };
     localStorage.setItem = function(key, value) {
         if (isOptixKey(key)) {
-            optixMemoryStore[key] = String(value);
-            if (shouldPersistOptixKey(key)) _setItem(key, value);
+            const nextValue = isStoreScopedCollectionKey(key)
+                ? sanitizeStoreScopedCollectionValue(key, value)
+                : String(value);
+            optixMemoryStore[key] = nextValue;
+            if (shouldPersistOptixKey(key)) _setItem(key, nextValue);
+            writePersistedOptixBackup(key, nextValue);
             if (shouldSyncKey(key)) scheduleCloudSync();
-            if (!entityDocApplyMode) queueEntityDocSync(key, String(value), false);
-            if (!firestoreStateApplyMode) queueFirestoreStateSync(key, String(value), false);
+            if (!entityDocApplyMode) queueEntityDocSync(key, nextValue, false);
+            if (!firestoreStateApplyMode) queueFirestoreStateSync(key, nextValue, false);
             return;
         }
         _setItem(key, value);
@@ -982,6 +1579,7 @@ function hookStorageForCloudSync() {
         if (isOptixKey(key)) {
             delete optixMemoryStore[key];
             if (shouldPersistOptixKey(key)) _removeItem(key);
+            removePersistedOptixBackup(key);
             if (shouldSyncKey(key)) scheduleCloudSync();
             if (!entityDocApplyMode) queueEntityDocSync(key, null, true);
             if (!firestoreStateApplyMode) queueFirestoreStateSync(key, null, true);
@@ -991,6 +1589,7 @@ function hookStorageForCloudSync() {
     };
     localStorage.clear = function() {
         Object.keys(optixMemoryStore).forEach((k) => { delete optixMemoryStore[k]; });
+        clearPersistedOptixBackups();
         _clear();
         scheduleCloudSync();
     };
@@ -998,11 +1597,40 @@ function hookStorageForCloudSync() {
 
 async function initCloudSync() {
     hookStorageForCloudSync();
-    await initCollectionRealtimeSync();
-    subscribeEntityDocsRealtime();
-    await pullEntityDocs();
-    await pullFirestoreState();
-    await pullCloudSnapshot(false);
+    try {
+        const user = await ensureFirebaseSession();
+        if (user) await syncSessionFromAuthUser(user);
+    } catch (err) {
+        console.error("Firebase session restore failed:", err);
+    }
+    try {
+        await initCollectionRealtimeSync();
+    } catch (err) {
+        console.error("Collection realtime init failed:", err);
+        firestoreOnline = false;
+        firestoreLastError = (err && err.message) ? err.message : String(err);
+    }
+    try {
+        subscribeEntityDocsRealtime();
+    } catch (err) {
+        console.error("Entity realtime subscribe failed:", err);
+    }
+    try {
+        await pullEntityDocs();
+    } catch (err) {
+        console.error("Entity doc pull failed during init:", err);
+    }
+    try {
+        await pullFirestoreState();
+    } catch (err) {
+        console.error("Firestore state pull failed during init:", err);
+    }
+    try {
+        await pullCloudSnapshot(false);
+    } catch (err) {
+        console.error("RTDB snapshot pull failed during init:", err);
+    }
+    updateCloudSyncStatus();
 }
 
 function applySettings() {
@@ -1014,6 +1642,9 @@ function applySettings() {
     const discPct = document.getElementById('txtDiscPercent');
     if (discAmt) discAmt.disabled = !s.enableDiscounts;
     if (discPct) discPct.disabled = !s.enableDiscounts;
+    document.querySelectorAll('.row-disc, .row-disc-amt').forEach(el => {
+        el.disabled = !s.enableDiscounts;
+    });
     if (!s.enableDiscounts) {
         if (discAmt) discAmt.value = "0";
         if (discPct) discPct.value = "0";
@@ -1021,10 +1652,14 @@ function applySettings() {
             el.value = "0";
             if (typeof calcRow === 'function') calcRow(el);
         });
+        document.querySelectorAll('.row-disc-amt').forEach(el => {
+            el.value = "0";
+        });
     }
 
     if (typeof calculateFinal === 'function') calculateFinal();
     updateBranchUI();
+    applyStoreBranding();
 }
 
 function updateBranchUI() {
@@ -1034,6 +1669,47 @@ function updateBranchUI() {
     if (branchSelect) {
         branchSelect.innerHTML = `<option>Select Branch : ${branchName}</option>`;
     }
+}
+
+function ensureStoreBrandingStyle() {
+    if (document.getElementById('optixStoreBrandStyle')) return;
+    const style = document.createElement('style');
+    style.id = 'optixStoreBrandStyle';
+    style.textContent = `
+        .optix-store-badge {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+            font-weight: 800;
+            font-size: 22px;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            line-height: 1;
+        }
+        .optix-store-badge.small {
+            font-size: 15px;
+            letter-spacing: 0.5px;
+        }
+    `;
+    document.head.appendChild(style);
+}
+
+function applyStoreBranding() {
+    ensureStoreBrandingStyle();
+    const settings = window.__optixSettings || getSettings();
+    const profile = getStoreProfile(settings);
+    const badgeText = getStoreBadgeText(settings);
+    document.querySelectorAll('.nav-icon.bg-black').forEach((el) => {
+        el.setAttribute('title', profile.name);
+        el.innerHTML = '';
+        const badge = document.createElement('span');
+        badge.className = `optix-store-badge${badgeText.length > 2 ? ' small' : ''}`;
+        badge.textContent = badgeText;
+        el.appendChild(badge);
+    });
 }
 
 function injectSettingsStyles() {
@@ -1131,6 +1807,7 @@ async function saveSettingsFromModal() {
     s.stockCheck = read('set_stock_check');
     s.autoInvoiceNo = read('set_auto_invoice');
     s.enableDiscounts = read('set_enable_discounts');
+    s.dateFormat = (document.getElementById('set_date_format')?.value || 'DD/MM/YYYY').trim();
     s.cloudSyncEnabled = read('set_cloud_sync');
     s.cloudSyncUrl = (document.getElementById('set_cloud_url')?.value || '').trim();
     s.cloudSyncToken = (document.getElementById('set_cloud_token')?.value || '').trim();
@@ -1151,6 +1828,20 @@ function initSettingsPage() {
     const set = (id, val) => { const el = document.getElementById(id); if (el) el.checked = !!val; };
     const branchInput = document.getElementById('set_branch_name');
     if (branchInput) branchInput.value = s.branchName || '';
+    const invoiceNameInput = document.getElementById('set_store_invoice_name');
+    if (invoiceNameInput) invoiceNameInput.value = s.storeInvoiceName || s.branchName || '';
+    const storeAddressInput = document.getElementById('set_store_address');
+    if (storeAddressInput) storeAddressInput.value = s.storeAddress || '';
+    const storePhoneInput = document.getElementById('set_store_phone');
+    if (storePhoneInput) storePhoneInput.value = s.storePhone || '';
+    const storeEmailInput = document.getElementById('set_store_email');
+    if (storeEmailInput) storeEmailInput.value = s.storeEmail || '';
+    const storeGstInput = document.getElementById('set_store_gst');
+    if (storeGstInput) storeGstInput.value = s.storeGst || '';
+    const storeLogoTextInput = document.getElementById('set_store_logo_text');
+    if (storeLogoTextInput) storeLogoTextInput.value = s.storeLogoText || '';
+    const dateFormatSelect = document.getElementById('set_date_format');
+    if (dateFormatSelect) dateFormatSelect.value = s.dateFormat || 'DD/MM/YYYY';
 
     set('set_page_show_whatsapp', s.showWhatsapp);
     set('set_action_send', actions.sendWhatsapp);
@@ -1190,6 +1881,13 @@ async function saveSettingsPage() {
     const read = (id) => { const el = document.getElementById(id); return el ? el.checked : false; };
     const branchName = (document.getElementById('set_branch_name')?.value || '').trim();
     s.branchName = branchName || 'Main Branch';
+    s.storeInvoiceName = (document.getElementById('set_store_invoice_name')?.value || '').trim();
+    s.dateFormat = (document.getElementById('set_date_format')?.value || 'DD/MM/YYYY').trim();
+    s.storeAddress = (document.getElementById('set_store_address')?.value || '').trim();
+    s.storePhone = (document.getElementById('set_store_phone')?.value || '').trim();
+    s.storeEmail = (document.getElementById('set_store_email')?.value || '').trim();
+    s.storeGst = (document.getElementById('set_store_gst')?.value || '').trim();
+    s.storeLogoText = (document.getElementById('set_store_logo_text')?.value || '').trim().slice(0, 3);
     s.showWhatsapp = read('set_page_show_whatsapp');
 
     const actions = s.actionsConfig || getDefaultActionConfig();
@@ -1206,6 +1904,7 @@ async function saveSettingsPage() {
 
     const ok = await saveSettings(s);
     applySettings();
+    refreshOrderDateInputs();
     if (typeof loadPendingOrders === 'function') loadPendingOrders();
     if (typeof loadSalesHistory === 'function') loadSalesHistory();
     await flushFirestoreStateQueue();
@@ -1232,38 +1931,40 @@ function resetAllData() {
         'optixPrescriptions','optixRx','optixSettings','optixInvoiceSeq'
     ];
     keys.forEach(k => localStorage.removeItem(k));
-    localStorage.removeItem('optixLoggedIn');
-    localStorage.removeItem('optixStoreId');
+    clearAuthSessionState();
     alert("All data cleared. The page will reload.");
     window.location.href = 'login.html';
 }
 
 async function performLogin() {
-    const user = document.getElementById('loginUser').value;
+    const user = normalizeEmail(document.getElementById('loginUser').value);
     const pass = document.getElementById('loginPass').value;
     const errorMsg = document.getElementById('loginError');
-    if (user !== "admin" || pass !== "admin123") {
+    if (errorMsg) {
+        errorMsg.innerText = "";
+        errorMsg.style.display = 'none';
+    }
+    if (!user || !pass) {
         if (errorMsg) {
-            errorMsg.innerText = "❌ Invalid Username or Password";
+            errorMsg.innerText = "Enter your email and password.";
             errorMsg.style.display = 'block';
         }
         return;
     }
     try {
-        if (typeof firebase !== 'undefined' && firebase.auth) {
-            const auth = firebase.auth();
-            if (!auth.currentUser) await auth.signInAnonymously();
-        }
+        if (typeof firebase === 'undefined' || !firebase.auth) throw new Error("Firebase Auth is not available.");
+        const auth = firebase.auth();
+        const credential = await auth.signInWithEmailAndPassword(user, pass);
+        const profile = await syncSessionFromAuthUser(credential.user);
+        window.location.href = profile && profile.role === 'super_admin' ? 'admin.html' : 'dashboard.html';
     } catch (err) {
-        console.error("Firebase login failed; using local session.", err);
+        console.error("Login failed:", err);
+        clearAuthSessionState();
+        if (errorMsg) {
+            errorMsg.innerText = (err && err.message) ? err.message : "Login failed.";
+            errorMsg.style.display = 'block';
+        }
     }
-    const defaultStore = getLoginBranchId();
-    localStorage.setItem('optixStoreId', defaultStore);
-    sessionStorage.setItem('optixStoreId', defaultStore);
-    localStorage.setItem('optixLoggedIn', 'true');
-    sessionStorage.setItem('optixLoggedIn', 'true');
-    localStorage.setItem('optixSessionStart', new Date().toISOString());
-    window.location.href = 'dashboard.html';
 }
 async function performLogout() {
     if(confirm("Are you sure you want to Logout?")) {
@@ -1274,10 +1975,7 @@ async function performLogout() {
         } catch (err) {
             console.error("Firebase signout failed:", err);
         }
-        localStorage.removeItem('optixLoggedIn');
-        sessionStorage.removeItem('optixLoggedIn');
-        localStorage.removeItem('optixStoreId');
-        sessionStorage.removeItem('optixStoreId');
+        clearAuthSessionState();
         window.location.href = 'login.html';
     }
 }
@@ -1336,11 +2034,16 @@ function refreshProductDrivenViews() {
 }
 
 function subscribeProductsRealtime() {
-    if (!db || productsRealtimeSubscribed) return;
-    productsRealtimeSubscribed = true;
+    if (!db) return;
     const storeId = currentStoreId();
     if (!storeId) return;
-    db.collection("products").where("storeId", "==", storeId).onSnapshot((snapshot) => {
+    if (productsRealtimeSubscribed && productsRealtimeStoreId === storeId && typeof productsRealtimeUnsub === 'function') return;
+    if (typeof productsRealtimeUnsub === 'function') {
+        try { productsRealtimeUnsub(); } catch {}
+    }
+    productsRealtimeSubscribed = true;
+    productsRealtimeStoreId = storeId;
+    productsRealtimeUnsub = db.collection("products").where("storeId", "==", storeId).onSnapshot((snapshot) => {
         const products = [];
         snapshot.forEach((doc) => {
             products.push({ ...doc.data(), _docId: doc.id });
@@ -1693,6 +2396,7 @@ async function saveOrder(openInNewTab = false) {
             qty: itemQty,
             price: price,
             disc: parseFloat(row.querySelector('.row-disc').value) || 0, // SAVE DISCOUNT
+            discAmt: parseFloat(row.querySelector('.row-disc-amt')?.value) || 0,
             total: total,
             rx: row.querySelector('.row-rx-data').value
                 ? JSON.parse(row.querySelector('.row-rx-data').value)
@@ -1762,6 +2466,12 @@ async function saveOrder(openInNewTab = false) {
     const paidBankTotal = existingBank + enteredBank;
     const totalPaidNow = paidCashTotal + paidUpiTotal + paidBankTotal;
     const payableNow = parseFloat(document.getElementById('txtPayable').value) || 0;
+
+    // Prevent overpayment beyond payable amount
+    if (totalPaidNow > payableNow + 0.01) {
+        alert(`Error: Total paid (Rs ${totalPaidNow.toFixed(2)}) exceeds the payable amount (Rs ${payableNow.toFixed(2)}). Please adjust the payment amounts.`);
+        return;
+    }
     const isFullyPaid = totalPaidNow >= payableNow;
     const nextStatus = (isEdit && editingOriginalOrder && editingOriginalOrder.status === "Confirmed" && isFullyPaid)
         ? "Confirmed"
@@ -1773,6 +2483,9 @@ async function saveOrder(openInNewTab = false) {
     if (settings.autoInvoiceNo !== false) {
         if (!invoiceNo) invoiceNo = getNextInvoiceNo();
     }
+    const shareToken = (isEdit && editingOriginalOrder && editingOriginalOrder.shareToken)
+        ? editingOriginalOrder.shareToken
+        : generateInvoiceShareToken();
 
     // Build/extend payment history so we can show part-payments + mode in reports
     const prevHistory = (isEdit && editingOriginalOrder && Array.isArray(editingOriginalOrder.paymentHistory))
@@ -1799,6 +2512,7 @@ async function saveOrder(openInNewTab = false) {
         id: orderId,
         invoiceNo: invoiceNo,
         storeId: storeId,
+        storeProfileSnapshot: getStoreProfile(settings),
         name: name,
         phone: phone,
         amount: payableNow,
@@ -1807,7 +2521,8 @@ async function saveOrder(openInNewTab = false) {
         paidUpi: paidUpiTotal,
         paidBank: paidBankTotal,
         paymentHistory: prevHistory,
-        date: document.getElementById('orderDate').value || new Date().toISOString(),
+        date: getManagedDateValue('orderDate') || new Date().toISOString(),
+        deliveryDate: getManagedDateValue('deliveryDate') || getManagedDateValue('orderDate') || '',
         baseTotal: baseTotal,
         grossTotal: grossTotal,
         discount: discountAmount,
@@ -1815,6 +2530,7 @@ async function saveOrder(openInNewTab = false) {
         roundOff: roundOff,
         status: nextStatus,
         items: items,
+        shareToken: shareToken,
         updatedAt: new Date().toISOString(),
         createdAt: (editingOriginalOrder && editingOriginalOrder.createdAt) || new Date().toISOString()
     };
@@ -1846,22 +2562,29 @@ async function saveOrder(openInNewTab = false) {
         customers.push(customerRecord);
     }
 
-    try {
-        if (db) {
-            await syncChangedProductsToCloud(products, productsWorking);
-            await upsertEntityToCloud('optixOrders', updatedOrder);
-            if (customerRecord) await upsertEntityToCloud('optixCustomers', customerRecord);
-        }
-    } catch (err) {
-        console.error("Cloud order save failed:", err);
-        alert("Cloud save failed. Bill was not finalized.");
-        return;
-    }
-
     localStorage.setItem('optixOrders', ordersJson);
     sessionStorage.setItem('optixOrdersSnapshot', ordersJson); // fallback for invoice.html if memory store inaccessible
     localStorage.setItem('optixProducts', JSON.stringify(productsWorking));
     localStorage.setItem('optixCustomers', JSON.stringify(customers));
+
+    let cloudSaveError = null;
+    try {
+        if (db) {
+            await ensureFirebaseSession();
+            await syncChangedProductsToCloud(products, productsWorking);
+            await upsertEntityToCloud('optixOrders', updatedOrder);
+            if (customerRecord) await upsertEntityToCloud('optixCustomers', customerRecord);
+            await savePublicInvoiceSnapshot(updatedOrder, settings);
+            firestoreOnline = true;
+            firestoreLastError = "";
+        }
+    } catch (err) {
+        console.error("Cloud order save failed:", err);
+        firestoreOnline = false;
+        firestoreLastError = (err && err.message) ? err.message : String(err);
+        cloudSaveError = firestoreLastError;
+    }
+    updateCloudSyncStatus();
 
     // Ensure entity/state docs are persisted before leaving the page.
     // invoice.html relies on Firestore orders_state when optix keys are memory-backed.
@@ -1872,12 +2595,16 @@ async function saveOrder(openInNewTab = false) {
         console.error("Pre-redirect cloud flush failed:", err);
     }
 
+    if (cloudSaveError) {
+        alert(`Bill saved locally. Cloud sync failed.\n${cloudSaveError}`);
+    }
+
     // 5. SUCCESS
     if(openInNewTab) {
-        window.open(`invoice.html?orderId=${updatedOrder.id}`, '_blank');
+        window.open(buildInvoiceUrl(updatedOrder.id, { order: updatedOrder }), '_blank');
         if (!isEdit) location.reload(); 
     } else {
-        window.location.href = `invoice.html?orderId=${updatedOrder.id}`;
+        window.location.href = buildInvoiceUrl(updatedOrder.id, { order: updatedOrder });
     }
 }
 
@@ -2439,8 +3166,8 @@ function loadCustomerToBill(name, phone) {
 }
 // --- NEW FUNCTION: Open Invoice in New Tab ---
 function openInvoiceNewTab(orderId) {
-    // Opens invoice.html passing the Order ID in the URL
-    window.open(`invoice.html?orderId=${orderId}`, '_blank');
+    const order = findOrderById(orderId);
+    window.open(buildInvoiceUrl(orderId, { order }), '_blank');
 }
 // --- 1. TOGGLE FIELDS BASED ON TYPE ---
 function toggleFields() {
@@ -2711,6 +3438,7 @@ let editingExistingPaidUpi = 0;
 let editingExistingPaidBank = 0;
 let activeRxOrderId = null;
 let activeRxItemIndex = null;
+let activeSavedLensPrescriptions = [];
 
 function isPendingPaymentIncrementMode() {
     return editingOrderId !== null
@@ -2778,9 +3506,10 @@ function computeOrderTotals(order) {
 
 async function initOrderPage() {
     const orderDate = document.getElementById('orderDate');
-    if (orderDate && !orderDate.value) {
-        orderDate.valueAsDate = new Date();
+    if (orderDate && !getManagedDateValue(orderDate)) {
+        setManagedDateValue(orderDate, new Date());
     }
+    initOrderDateInputs();
 
     const urlParams = new URLSearchParams(window.location.search);
     const editId = urlParams.get('editId');
@@ -2829,7 +3558,12 @@ async function loadOrderForEdit(id) {
     setOrderHeaderForEdit(order);
 
     const orderDate = document.getElementById('orderDate');
-    if (orderDate) orderDate.value = toLocalDateStr(new Date(order.date));
+    if (orderDate) setManagedDateValue(orderDate, toLocalDateStr(new Date(order.date)));
+    const deliveryDate = document.getElementById('deliveryDate');
+    if (deliveryDate) {
+        const fallbackDelivery = order.date ? toLocalDateStr(new Date(new Date(order.date).getTime() + 86400000)) : '';
+        setManagedDateValue(deliveryDate, order.deliveryDate || fallbackDelivery);
+    }
 
     if (document.getElementById('cName')) document.getElementById('cName').value = order.name || "";
     if (document.getElementById('cPhone')) document.getElementById('cPhone').value = order.phone || "";
@@ -2849,6 +3583,8 @@ async function loadOrderForEdit(id) {
             const qty = parseFloat(item.qty) || 0;
             const price = parseFloat(item.price) || 0;
             const disc = parseFloat(item.disc) || 0;
+            const subtotal = qty * price;
+            const discAmt = parseFloat(item.discAmt) || ((subtotal * disc) / 100);
 
             row.querySelector('.barcode').value = barcode;
             row.querySelector('.p-type').value = item.type || "";
@@ -2857,6 +3593,8 @@ async function loadOrderForEdit(id) {
             row.querySelector('.qty').value = qty;
             row.querySelector('.price').value = price;
             row.querySelector('.row-disc').value = disc;
+            row.querySelector('.row-disc-amt').value = discAmt.toFixed(2);
+            row.dataset.discountMode = discAmt > 0 ? 'amount' : 'percent';
 
             const rxData = item.rx ? (typeof item.rx === "string" ? item.rx : JSON.stringify(item.rx)) : "";
             row.querySelector('.row-rx-data').value = rxData;
@@ -2899,6 +3637,8 @@ async function loadOrderForEdit(id) {
         const modal = document.getElementById('modalLens');
         if (modal) {
             populateRxItemSelect();
+            syncLensCustomerFieldsFromOrder(true);
+            populateSavedLensPrescriptionSelect();
             modal.style.display = 'flex';
         }
     }
@@ -2932,7 +3672,8 @@ function addNewRow() {
             <td><input type="number" class="qty" value="1" oninput="calcRow(this)" style="text-align:center"></td>
             <td><input type="number" class="price" value="0" oninput="calcRow(this)"></td>
             
-            <td><input type="number" class="row-disc" value="0" oninput="calcRow(this)" style="text-align:center; color:red;"></td>
+            <td><input type="number" class="row-disc" value="0" oninput="calcRow(this, 'percent')" style="text-align:center; color:red;"></td>
+            <td><input type="number" class="row-disc-amt" value="0" oninput="calcRow(this, 'amount')" style="text-align:right; color:red;"></td>
             
             <td><input type="text" class="row-total" readonly style="font-weight:bold"></td>
             <td style="text-align:center"><i class="fas fa-trash" style="color:red; cursor:pointer;" onclick="this.closest('tr').remove(); calculateFinal()"></i></td>
@@ -2975,6 +3716,8 @@ function handleProductType(selectEl) {
         ['use_constant','use_distance','use_reading','use_computer'].forEach(id => { const el = document.getElementById(id); if (el) el.checked = false; });
         const rxWrap = document.getElementById('rxSelectWrap');
         if (rxWrap) rxWrap.style.display = 'none';
+        syncLensCustomerFieldsFromOrder(true);
+        populateSavedLensPrescriptionSelect();
         initLensRxAutoCalc();
     } else if (type === 'Solution' || type === 'Other' || type === 'Box') {
         const modal = document.getElementById('modalFrame');
@@ -3029,6 +3772,161 @@ function parseLensDesc(desc) {
         coating: parts[2] || "",
         index: parts[3] || ""
     };
+}
+
+function isEyewearPrescription(rx) {
+    return !!rx && (
+        String(rx.type || '').toLowerCase() === 'eyewear'
+        || (rx.rightEye && rx.leftEye)
+    );
+}
+
+function syncLensCustomerFieldsFromOrder(force = false) {
+    const lnCustName = document.getElementById('lnCustName');
+    const lnCustPhone = document.getElementById('lnCustPhone');
+    const orderName = document.getElementById('cName');
+    const orderPhone = document.getElementById('cPhone');
+
+    if (lnCustName && orderName && (force || !lnCustName.value.trim())) {
+        lnCustName.value = orderName.value.trim();
+    }
+    if (lnCustPhone && orderPhone && (force || !lnCustPhone.value.trim())) {
+        lnCustPhone.value = orderPhone.value.trim();
+    }
+}
+
+function formatSavedLensPrescriptionOption(rx) {
+    const formatEye = (eye = {}) => `${eye.sph || '-'} / ${eye.cyl || '-'} / ${eye.axis || '-'}`;
+    const rawDate = rx.rxDate || rx.rxDateTime || '';
+    const parsedDate = new Date(rawDate);
+    const displayDate = Number.isNaN(parsedDate.getTime())
+        ? (rawDate || 'No Date')
+        : parsedDate.toLocaleDateString('en-IN');
+
+    return `${displayDate} | OD ${formatEye(rx.rightEye)} | OS ${formatEye(rx.leftEye)}`;
+}
+
+function populateSavedLensPrescriptionSelect() {
+    const select = document.getElementById('savedRxSelect');
+    const wrap = document.getElementById('savedRxWrap');
+    if (!select || !wrap) return;
+
+    const lnCustName = document.getElementById('lnCustName');
+    const lnCustPhone = document.getElementById('lnCustPhone');
+    const customerName = String(lnCustName?.value || '').trim().toLowerCase();
+    const customerPhone = String(lnCustPhone?.value || '').replace(/\D/g, '');
+
+    select.innerHTML = '';
+    activeSavedLensPrescriptions = [];
+
+    if (!customerName && !customerPhone) {
+        wrap.style.display = 'none';
+        return;
+    }
+
+    const prescriptions = JSON.parse(localStorage.getItem('optixPrescriptions')) || [];
+    activeSavedLensPrescriptions = prescriptions
+        .filter(rx => {
+            if (!isEyewearPrescription(rx)) return false;
+
+            const rxName = String(rx.patName || '').trim().toLowerCase();
+            const rxPhone = String(rx.patMobile || '').replace(/\D/g, '');
+            const phoneMatch = customerPhone
+                ? (!!rxPhone && (rxPhone === customerPhone || rxPhone.endsWith(customerPhone) || customerPhone.endsWith(rxPhone)))
+                : false;
+            const nameMatch = customerName ? rxName.includes(customerName) : false;
+
+            if (customerPhone && customerName) return phoneMatch || (nameMatch && !rxPhone);
+            if (customerPhone) return phoneMatch;
+            return nameMatch;
+        })
+        .sort((a, b) => {
+            const aTime = new Date(a.rxDate || a.rxDateTime || 0).getTime();
+            const bTime = new Date(b.rxDate || b.rxDateTime || 0).getTime();
+            return bTime - aTime;
+        });
+
+    wrap.style.display = 'grid';
+
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = activeSavedLensPrescriptions.length
+        ? 'Select previous saved prescription'
+        : 'No saved prescriptions found';
+    select.appendChild(placeholder);
+
+    if (!activeSavedLensPrescriptions.length) {
+        select.disabled = true;
+        select.selectedIndex = 0;
+        return;
+    }
+
+    activeSavedLensPrescriptions.forEach((rx, idx) => {
+        const option = document.createElement('option');
+        option.value = String(idx);
+        option.textContent = formatSavedLensPrescriptionOption(rx);
+        select.appendChild(option);
+    });
+
+    select.disabled = false;
+    select.selectedIndex = 0;
+}
+
+function fillLensModalFromSavedPrescription(rx) {
+    if (!rx) return;
+
+    const setVal = (id, val) => {
+        const el = document.getElementById(id);
+        if (el) el.value = val || '';
+    };
+
+    setVal('lnCustName', rx.patName);
+    setVal('lnCustPhone', rx.patMobile);
+
+    const re = rx.rightEye || {};
+    const le = rx.leftEye || {};
+
+    setVal('rx_r_sph', re.sph);
+    setVal('rx_r_cyl', re.cyl);
+    setVal('rx_r_axis', re.axis);
+    setVal('rx_r_pd', re.pd);
+    setVal('rx_r_va', re.va);
+    setVal('rx_r_nv_sph', re.nvSph);
+    setVal('rx_r_nv_cyl', re.nvCyl);
+    setVal('rx_r_nv_axis', re.nvAxis);
+    setVal('rx_r_nv_pd', re.nvPd);
+    setVal('rx_r_nv_va', re.nvVa);
+    setVal('rx_r_add', re.add);
+
+    setVal('rx_l_sph', le.sph);
+    setVal('rx_l_cyl', le.cyl);
+    setVal('rx_l_axis', le.axis);
+    setVal('rx_l_pd', le.pd);
+    setVal('rx_l_va', le.va);
+    setVal('rx_l_nv_sph', le.nvSph);
+    setVal('rx_l_nv_cyl', le.nvCyl);
+    setVal('rx_l_nv_axis', le.nvAxis);
+    setVal('rx_l_nv_pd', le.nvPd);
+    setVal('rx_l_nv_va', le.nvVa);
+    setVal('rx_l_add', le.add);
+
+    const usage = Array.isArray(rx.usage) ? rx.usage : [];
+    const useConstant = document.getElementById('use_constant');
+    const useDistance = document.getElementById('use_distance');
+    const useReading = document.getElementById('use_reading');
+    const useComputer = document.getElementById('use_computer');
+    if (useConstant) useConstant.checked = usage.includes("Constant Use");
+    if (useDistance) useDistance.checked = usage.includes("Distance Wear");
+    if (useReading) useReading.checked = usage.includes("Reading Wear");
+    if (useComputer) useComputer.checked = usage.includes("Computer/Office");
+
+    initLensRxAutoCalc();
+}
+
+function handleSavedRxSelectChange(selectEl) {
+    const idx = parseInt(selectEl?.value, 10);
+    if (!Number.isInteger(idx) || !activeSavedLensPrescriptions[idx]) return;
+    fillLensModalFromSavedPrescription(activeSavedLensPrescriptions[idx]);
 }
 
 function fillLensModalFromRow(row) {
@@ -3160,6 +4058,8 @@ function openRxEditor(orderId) {
         const modal = document.getElementById('modalLens');
         if (modal) {
             populateRxItemSelect();
+            syncLensCustomerFieldsFromOrder(true);
+            populateSavedLensPrescriptionSelect();
             modal.style.display = 'flex';
         }
         return;
@@ -3393,13 +4293,46 @@ function saveFrameData() {
     const name = document.getElementById('frName').value;
     const brand = document.getElementById('frBrand').value;
     const price = document.getElementById('frPrice').value;
+    const discPercentInput = parseFloat(document.getElementById('frDisc').value) || 0;
+    const discAmtInput = parseFloat(document.getElementById('frDiscAmt') ? document.getElementById('frDiscAmt').value : 0) || 0;
+    const qty = parseFloat(activeRow.querySelector('.qty').value) || 1;
+    const subtotal = (parseFloat(price) || 0) * qty;
+    const effectiveDiscPercent = subtotal > 0 && discAmtInput > 0 ? ((discAmtInput / subtotal) * 100) : discPercentInput;
 
     activeRow.querySelector('.p-code').value = code;
     activeRow.querySelector('.desc').value = `FRAME: ${brand} ${name}`;
     activeRow.querySelector('.price').value = price;
-    
-    calcRow(activeRow.querySelector('.price')); // Recalculate
+    activeRow.querySelector('.row-disc').value = effectiveDiscPercent.toFixed(2);
+    activeRow.querySelector('.row-disc-amt').value = discAmtInput.toFixed(2);
+    activeRow.dataset.discountMode = discAmtInput > 0 ? 'amount' : 'percent';
+
+    calcRow(activeRow.querySelector(discAmtInput > 0 ? '.row-disc-amt' : '.row-disc')); // Recalculate
     closeModal('modalFrame');
+}
+
+// Keep frame discount amount and percent in sync within the modal
+function updateFrameDiscount(mode) {
+    const priceEl = document.getElementById('frPrice');
+    const discEl = document.getElementById('frDisc');
+    const discAmtEl = document.getElementById('frDiscAmt');
+    if (!priceEl || !discEl || !discAmtEl) return;
+
+    const price = parseFloat(priceEl.value) || 0;
+    const qty = activeRow ? (parseFloat(activeRow.querySelector('.qty').value) || 1) : 1;
+    const subtotal = price * qty;
+    if (subtotal <= 0) {
+        if (mode === 'percent') discAmtEl.value = '';
+        else discEl.value = '';
+        return;
+    }
+
+    if (mode === 'percent') {
+        const percent = parseFloat(discEl.value) || 0;
+        discAmtEl.value = ((subtotal * percent) / 100).toFixed(2);
+    } else {
+        const amt = parseFloat(discAmtEl.value) || 0;
+        discEl.value = ((amt / subtotal) * 100).toFixed(2);
+    }
 }
 
 // 5. Save LENS Data to Row
@@ -3475,10 +4408,12 @@ function saveLensData() {
     activeRow.querySelector('.desc').value = desc;
     activeRow.querySelector('.price').value = price;
     activeRow.querySelector('.row-disc').value = disc;
+    activeRow.querySelector('.row-disc-amt').value = "0.00";
+    activeRow.dataset.discountMode = 'percent';
 
     if (cleanedRx) saveLensRxToDatabase(cleanedRx);
 
-    calcRow(activeRow.querySelector('.price'));
+    calcRow(activeRow.querySelector('.row-disc'));
     closeModal('modalLens');
 }
 
@@ -3531,7 +4466,7 @@ async function saveLensRxToDatabase(rxData) {
     if (!patName || !patMobile) return;
 
     const patAge = calculateAgeFromDob(dobEl ? dobEl.value : "");
-    const rxDate = orderDateEl && orderDateEl.value ? orderDateEl.value : new Date().toISOString().slice(0, 10);
+    const rxDate = getManagedDateValue(orderDateEl) || new Date().toISOString().slice(0, 10);
 
     const re = rxData.re || {};
     const le = rxData.le || {};
@@ -3586,18 +4521,40 @@ async function saveLensRxToDatabase(rxData) {
     if (typeof loadRxDatabase === 'function') loadRxDatabase();
 }
 
-// 6. Recalculate Total (row-level discount %)
-function calcRow(el) {
+// 6. Recalculate Total (row-level discount % / Rs)
+function calcRow(el, mode = '') {
     if (!el) return;
     const row = el.closest('tr');
     if (!row) return;
     const qty = parseFloat(row.querySelector('.qty').value) || 0;
     const price = parseFloat(row.querySelector('.price').value) || 0;
     const discountsEnabled = getSettings().enableDiscounts !== false;
-    const discPercent = discountsEnabled ? (parseFloat(row.querySelector('.row-disc').value) || 0) : 0;
-
     const subtotal = qty * price;
-    const discAmt = (subtotal * discPercent) / 100;
+    const discPercentEl = row.querySelector('.row-disc');
+    const discAmtEl = row.querySelector('.row-disc-amt');
+
+    let sourceMode = mode || row.dataset.discountMode || 'percent';
+    if (el.classList.contains('row-disc')) sourceMode = 'percent';
+    if (el.classList.contains('row-disc-amt')) sourceMode = 'amount';
+    row.dataset.discountMode = sourceMode;
+
+    let discPercent = 0;
+    let discAmt = 0;
+
+    if (discountsEnabled && subtotal > 0) {
+        if (sourceMode === 'amount') {
+            discAmt = parseFloat(discAmtEl?.value) || 0;
+            discAmt = Math.max(0, Math.min(discAmt, subtotal));
+            discPercent = (discAmt / subtotal) * 100;
+        } else {
+            discPercent = parseFloat(discPercentEl?.value) || 0;
+            discPercent = Math.max(0, Math.min(discPercent, 100));
+            discAmt = (subtotal * discPercent) / 100;
+        }
+    }
+
+    if (discPercentEl) discPercentEl.value = discPercent.toFixed(2);
+    if (discAmtEl) discAmtEl.value = discAmt.toFixed(2);
     const total = subtotal - discAmt;
 
     row.querySelector('.row-total').value = total.toFixed(2);
@@ -4642,10 +5599,173 @@ function filterOrders(orders, filters) {
     });
 }
 
+function formatDateBySetting(value) {
+    if (!value) return '-';
+    const parsed = new Date(value);
+    if (isNaN(parsed.getTime())) return '-';
+    const s = getSettings();
+    const fmt = (s.dateFormat || 'DD/MM/YYYY').toUpperCase();
+    const dd = String(parsed.getDate()).padStart(2, '0');
+    const mm = String(parsed.getMonth() + 1).padStart(2, '0');
+    const yyyy = parsed.getFullYear();
+    switch (fmt) {
+        case 'MM/DD/YYYY': return `${mm}/${dd}/${yyyy}`;
+        case 'YYYY-MM-DD': return `${yyyy}-${mm}-${dd}`;
+        case 'DD-MM-YYYY': return `${dd}-${mm}-${yyyy}`;
+        default: return `${dd}/${mm}/${yyyy}`;
+    }
+}
+
+function normalizeDateInputValue(value) {
+    if (!value) return '';
+    if (value instanceof Date) {
+        return isNaN(value.getTime()) ? '' : toLocalDateStr(value);
+    }
+
+    const raw = String(value).trim();
+    if (!raw) return '';
+    if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+
+    const parts = raw.split(/[\/.\-]/).map(p => p.trim()).filter(Boolean);
+    if (parts.length === 3) {
+        const fmt = (getSettings().dateFormat || 'DD/MM/YYYY').toUpperCase();
+        let dd = '';
+        let mm = '';
+        let yyyy = '';
+
+        if (fmt === 'MM/DD/YYYY') {
+            [mm, dd, yyyy] = parts;
+        } else if (fmt === 'YYYY-MM-DD') {
+            [yyyy, mm, dd] = parts;
+        } else {
+            [dd, mm, yyyy] = parts;
+        }
+
+        if (yyyy && yyyy.length === 4 && dd && mm) {
+            return `${yyyy}-${String(mm).padStart(2, '0')}-${String(dd).padStart(2, '0')}`;
+        }
+    }
+
+    const parsed = new Date(raw);
+    return isNaN(parsed.getTime()) ? '' : toLocalDateStr(parsed);
+}
+
+function getManagedDateValue(inputOrId) {
+    const el = typeof inputOrId === 'string' ? document.getElementById(inputOrId) : inputOrId;
+    if (!el) return '';
+    return normalizeDateInputValue(el.dataset.isoValue || el.value || '');
+}
+
+function refreshManagedDateInput(inputOrId) {
+    const el = typeof inputOrId === 'string' ? document.getElementById(inputOrId) : inputOrId;
+    if (!el || el.dataset.manageDateFormat !== '1') return;
+
+    const iso = getManagedDateValue(el);
+    el.dataset.isoValue = iso;
+    el.placeholder = getSettings().dateFormat || 'DD/MM/YYYY';
+
+    if (document.activeElement === el) {
+        try { el.type = 'date'; } catch (e) {}
+        el.value = iso;
+        return;
+    }
+
+    try { el.type = 'text'; } catch (e) {}
+    el.value = iso ? formatDateBySetting(iso) : '';
+}
+
+function setManagedDateValue(inputOrId, value) {
+    const el = typeof inputOrId === 'string' ? document.getElementById(inputOrId) : inputOrId;
+    if (!el) return;
+    el.dataset.isoValue = normalizeDateInputValue(value);
+    refreshManagedDateInput(el);
+}
+
+function initManagedDateInput(inputOrId, fallbackValue = '') {
+    const el = typeof inputOrId === 'string' ? document.getElementById(inputOrId) : inputOrId;
+    if (!el) return;
+
+    if (el.dataset.manageDateFormat === '1') {
+        if (!getManagedDateValue(el) && fallbackValue) {
+            el.dataset.isoValue = normalizeDateInputValue(fallbackValue);
+        }
+        refreshManagedDateInput(el);
+        return;
+    }
+
+    el.dataset.manageDateFormat = '1';
+
+    const activateEditor = () => {
+        const iso = getManagedDateValue(el) || normalizeDateInputValue(fallbackValue) || toLocalDateStr(new Date());
+        el.dataset.isoValue = iso;
+        try { el.type = 'date'; } catch (e) {}
+        el.value = iso;
+        if (typeof el.showPicker === 'function') {
+            try { el.showPicker(); } catch (e) {}
+        }
+    };
+
+    const showFormattedValue = () => {
+        const iso = normalizeDateInputValue(el.value) || el.dataset.isoValue || normalizeDateInputValue(fallbackValue);
+        el.dataset.isoValue = iso || '';
+        try { el.type = 'text'; } catch (e) {}
+        el.placeholder = getSettings().dateFormat || 'DD/MM/YYYY';
+        el.value = iso ? formatDateBySetting(iso) : '';
+    };
+
+    el.addEventListener('focus', activateEditor);
+    el.addEventListener('click', () => {
+        if (el.type !== 'date') activateEditor();
+    });
+    el.addEventListener('change', () => {
+        const iso = normalizeDateInputValue(el.value);
+        if (iso) el.dataset.isoValue = iso;
+    });
+    el.addEventListener('blur', showFormattedValue);
+
+    const startingValue = getManagedDateValue(el) || normalizeDateInputValue(fallbackValue);
+    if (startingValue) el.dataset.isoValue = startingValue;
+    showFormattedValue();
+}
+
+function initOrderDateInputs() {
+    const today = toLocalDateStr(new Date());
+    initManagedDateInput('orderDate', today);
+    initManagedDateInput('deliveryDate', today);
+}
+
+function refreshOrderDateInputs() {
+    refreshManagedDateInput('orderDate');
+    refreshManagedDateInput('deliveryDate');
+}
+
+function formatDisplayDateOnly(value) {
+    if (!value) return '-';
+    if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+        return formatDateBySetting(value);
+    }
+    return formatDateBySetting(value);
+}
+
+function formatDisplayDateTime(value) {
+    if (!value) return '-';
+    if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+        return formatDateBySetting(value);
+    }
+    const parsed = new Date(value);
+    if (!isNaN(parsed.getTime())) {
+        const datePart = formatDateBySetting(parsed);
+        const timePart = parsed.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+        return `${datePart} ${timePart}`;
+    }
+    return String(value);
+}
+
 function renderOrderRow(o, index, options) {
     const status = o.status || "Pending";
-    const orderDate = new Date(o.date).toLocaleString('en-IN', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' });
-    const delDate = new Date(new Date(o.date).getTime() + 86400000).toLocaleString('en-IN', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' });
+    const orderDate = formatDisplayDateTime(o.createdAt || o.updatedAt || o.date);
+    const fallbackDelivery = o.date ? toLocalDateStr(new Date(new Date(o.date).getTime() + 86400000)) : '';
+    const delDate = formatDisplayDateOnly(o.deliveryDate || fallbackDelivery);
 
     const amount = parseFloat(o.amount) || 0;
     const paid = parseFloat(o.paid) || 0;
@@ -5118,17 +6238,30 @@ function downloadDailyStatementPDF() {
 // --- ACTION FEATURES ---
 
 function sendWhatsapp(phone, name, balance, orderId) {
+    const popup = window.open('about:blank', '_blank');
     const orders = JSON.parse(localStorage.getItem('optixOrders')) || [];
     const order = orders.find(o => o.id === orderId);
     const status = order && order.status ? order.status : "Pending";
 
     const baseUrl = window.location.origin + window.location.pathname.replace(/[^/]+$/, '');
     const docType = status === "Confirmed" ? "invoice" : "advance";
-    const link = `${baseUrl}invoice.html?orderId=${orderId}&type=${docType}`;
-
     const label = status === "Confirmed" ? "Final Invoice" : "Advance Receipt";
-    const msg = `Dear ${name}, your ${label} is ready. Balance amount is Rs ${balance}. Please collect it. ${link} - City Optical`;
-    window.open(`https://wa.me/91${phone}?text=${encodeURIComponent(msg)}`, '_blank');
+
+    (async () => {
+        const invoicePath = await resolveShareableInvoiceUrl(orderId, { type: docType, order, settings: getSettings() });
+        const link = `${baseUrl}${invoicePath}`;
+        const msg = `Dear ${name}, your ${label} is ready. Balance amount is Rs ${balance}. Please collect it. ${link} - City Optical`;
+        const waUrl = `https://wa.me/91${phone}?text=${encodeURIComponent(msg)}`;
+        if (popup) {
+            popup.location = waUrl;
+        } else {
+            window.open(waUrl, '_blank');
+        }
+    })().catch((err) => {
+        console.error('WhatsApp share failed:', err);
+        if (popup) popup.close();
+        alert('Unable to prepare invoice link right now.');
+    });
 }
 
 function sendWhatsappChat(phone, name, balance, orderId) {
@@ -5168,8 +6301,8 @@ async function deleteOrder(id) {
 }
 
 function printReceipt(id, type) {
-    // Opens the invoice page. You can customize invoice.html to show "Advance Receipt" header if needed
-    window.open(`invoice.html?orderId=${id}&type=${type}`, '_blank');
+    const order = findOrderById(id);
+    window.open(buildInvoiceUrl(id, { type, order }), '_blank');
 }
 
 function viewPayments(id) {

@@ -6,54 +6,111 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    function userStore() {
-      return request.auth != null && request.auth.token.storeId != null
-        ? request.auth.token.storeId
+    function signedInEmail() {
+      return isSignedIn() && request.auth.token.email != null
+        ? request.auth.token.email
+        : "";
+    }
+
+    function isSuperAdmin() {
+      return signedInEmail() in [
+        "digamber.yadav.dy@gmail.com"
+      ];
+    }
+
+    function hasUserProfile() {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function currentUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function currentUserStore() {
+      return hasUserProfile() && currentUserData().storeId != null
+        ? currentUserData().storeId
         : null;
     }
 
-    function isAdmin() {
-      return request.auth != null && request.auth.token.isAdmin == true;
+    function currentUserStatus() {
+      return hasUserProfile() && currentUserData().status != null
+        ? currentUserData().status
+        : "inactive";
+    }
+
+    function isActiveStoreUser() {
+      return hasUserProfile() && currentUserStatus() == "active";
+    }
+
+    function canAccessStore(storeId) {
+      return isSuperAdmin()
+        || (isSignedIn()
+          && isActiveStoreUser()
+          && storeId != null
+          && currentUserStore() == storeId);
     }
 
     // Admin console metadata
     match /admin_stores/{storeId} {
-      allow read, write: if isAdmin();
+      allow read: if isSuperAdmin() || canAccessStore(storeId);
+      allow write: if isSuperAdmin();
     }
 
-    // User profiles: admins can read/write, users can read their own
+    // User profiles
     match /users/{uid} {
-      allow read: if isSignedIn() && (isAdmin() || uid == request.auth.uid);
-      allow write: if isAdmin();
+      allow read: if isSignedIn() && (isSuperAdmin() || uid == request.auth.uid);
+      allow create, update, delete: if isSuperAdmin();
     }
 
-    // Products collection (legacy, not under /stores)
+    // Store-scoped top-level collections
     match /products/{docId} {
-      allow read, write: if isSignedIn();
+      allow read, delete: if canAccessStore(resource.data.storeId);
+      allow create, update: if canAccessStore(request.resource.data.storeId);
     }
 
-    // Current app collections (top-level, storeId stored inside each doc)
     match /orders/{docId} {
-      allow read, write: if isSignedIn();
+      allow read, delete: if canAccessStore(resource.data.storeId);
+      allow create, update: if canAccessStore(request.resource.data.storeId);
     }
 
     match /customers/{docId} {
-      allow read, write: if isSignedIn();
+      allow read, delete: if canAccessStore(resource.data.storeId);
+      allow create, update: if canAccessStore(request.resource.data.storeId);
     }
 
     match /expenses/{docId} {
-      allow read, write: if isSignedIn();
+      allow read, delete: if canAccessStore(resource.data.storeId);
+      allow create, update: if canAccessStore(request.resource.data.storeId);
     }
 
     match /prescriptions/{docId} {
-      allow read, write: if isSignedIn();
+      allow read, delete: if canAccessStore(resource.data.storeId);
+      allow create, update: if canAccessStore(request.resource.data.storeId);
+    }
+
+    match /public_invoices/{token} {
+      allow get: if resource != null && resource.data.active == true;
+      allow list: if false;
+      allow create, update: if canAccessStore(request.resource.data.storeId);
+      allow delete: if canAccessStore(resource.data.storeId);
+    }
+
+    match /public_invoice_orders/{orderId} {
+      allow get: if resource != null && resource.data.active == true;
+      allow list: if false;
+      allow create, update: if canAccessStore(request.resource.data.storeId);
+      allow delete: if canAccessStore(resource.data.storeId);
     }
 
     match /staff/{docId} {
-      allow read, write: if isSignedIn();
+      allow read, delete: if canAccessStore(resource.data.storeId);
+      allow create, update: if canAccessStore(request.resource.data.storeId);
     }
 
-    // Legacy sync/state documents still used by parts of the app
+    // Legacy sync/state documents still used by parts of the app.
+    // These remain signed-in only for compatibility and should be
+    // migrated to store-scoped docs in the next slice.
     match /app_state/{docId} {
       allow read, write: if isSignedIn();
     }
@@ -84,7 +141,7 @@ service cloud.firestore {
 
     // Tenant data: structure stores/{storeId}/...
     match /stores/{storeId}/{collection}/{docId} {
-      allow read, write: if isSignedIn() && (isAdmin() || userStore() == storeId);
+      allow read, write: if canAccessStore(storeId);
     }
   }
 }
