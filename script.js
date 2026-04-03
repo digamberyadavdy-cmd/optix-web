@@ -6304,9 +6304,13 @@ function buildDailyStatement() {
 
     const totalBalance = totalAmount - totalPaid;
 
+    // Fetch the dynamic store name from settings
+    const storeProfile = getStoreProfile();
+    const dynamicStoreName = storeProfile.name ? storeProfile.name.toUpperCase() : "OPTICAL STORE";
+
     const headerHtml = `
         <div style="text-align:center; margin:6px 0 4px;">
-            <div style="font-size:20px; font-weight:800;">CITY OPTICAL CENTER</div>
+            <div style="font-size:20px; font-weight:800;">${dynamicStoreName}</div>
             <div style="font-size:12px;">Daily Statement</div>
             <div style="font-size:12px; color:#555;">From ${from} To ${to}</div>
         </div>
