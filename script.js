@@ -6337,14 +6337,14 @@ function buildDailyStatement() {
                 <div class="ds-card-value">Rs ${expTotal.toFixed(2)}</div>
                 <div class="ds-card-sub">Cash: ${expCash.toFixed(2)} | UPI: ${expUpi.toFixed(2)} | Card/Bank: ${expBank.toFixed(2)}</div>
             </div>
-            <div class="ds-card ds-teal">
-                <div class="ds-card-title">Net Collected (Paid - Expenses)</div>
-                <div class="ds-card-value">Rs ${netPaid.toFixed(2)}</div>
-            </div>
-            <div class="ds-card ds-slate">
-                <div class="ds-card-title">Net In Hand</div>
-                <div class="ds-card-value">Cash: ${netCash.toFixed(2)}</div>
-                <div class="ds-card-sub">UPI: ${netUpi.toFixed(2)} | Card/Bank: ${netBank.toFixed(2)}</div>
+            <div class="ds-card ds-teal" style="background: linear-gradient(135deg, #ccfbf1, #ffffff); border-color:#99f6e4;">
+                <div class="ds-card-title">Actual Capital In Hand</div>
+                <div class="ds-card-value" style="color: #0f766e;">Rs ${netPaid.toFixed(2)}</div>
+                <div class="ds-card-sub" style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #99f6e4;">
+                    <strong>Cash:</strong> Rs ${netCash.toFixed(2)} <br>
+                    <strong>UPI:</strong> Rs ${netUpi.toFixed(2)} <br>
+                    <strong>Bank/Card:</strong> Rs ${netBank.toFixed(2)}
+                </div>
             </div>
         </div>
     `;
