@@ -396,18 +396,34 @@
             return parts.length ? `LENS - ${parts.join(' - ')}` : '';
         }
 
+        function resolveItemCode(item) {
+            return String(
+                item.code
+                || item.itemCode
+                || item.productCode
+                || item.barcode
+                || ''
+            ).trim();
+        }
+
         function resolveItemDescription(item) {
             const rawDesc = item.desc || item.description || item.name || '';
             const hasLensDetails = ['lensBrand', 'lensType', 'lensDesign', 'lensCoating', 'lensIndex']
                 .some((key) => String(item[key] || '').trim());
-            if (!hasLensDetails) return rawDesc || '-';
-            return buildLensDescription({
+            const itemCode = resolveItemCode(item);
+            const lensDesc = hasLensDetails ? buildLensDescription({
                 brand: item.lensBrand,
                 type: item.lensType,
                 design: item.lensDesign,
                 coating: item.lensCoating,
                 index: item.lensIndex
-            }) || rawDesc || '-';
+            }) : '';
+            const baseDesc = lensDesc || rawDesc || '-';
+            const isLensItem = /^(lens|contact lens)$/i.test(String(item.type || '').trim()) || hasLensDetails || /^LENS\b/i.test(baseDesc);
+            if (isLensItem && itemCode) {
+                return `${itemCode} - ${baseDesc}`;
+            }
+            return baseDesc;
         }
 
         // Try to normalize items from various possible keys/shapes
