@@ -1702,17 +1702,30 @@ function ensureStoreBrandingStyle() {
 
 function applyStoreBranding() {
     ensureStoreBrandingStyle();
+    
+    // Fetch the current store settings/profile
     const settings = window.__optixSettings || getSettings();
     const profile = getStoreProfile(settings);
-    const badgeText = getStoreBadgeText(settings);
-    document.querySelectorAll('.nav-icon.bg-black').forEach((el) => {
-        el.setAttribute('title', profile.name);
-        el.innerHTML = '';
-        const badge = document.createElement('span');
-        badge.className = `optix-store-badge${badgeText.length > 2 ? ' small' : ''}`;
-        badge.textContent = badgeText;
-        el.appendChild(badge);
-    });
+    
+    // Select the new HTML elements
+    const brandLogoImg = document.querySelector('.brand-logo-img');
+    const brandNameSpan = document.querySelector('.brand-name');
+    
+    // 1. Update Store Name
+    if (brandNameSpan) {
+        brandNameSpan.textContent = profile.name || 'OptixCrafter'; 
+    }
+    
+    // 2. Update Store Logo
+    if (brandLogoImg) {
+        if (settings.storeLogo) {
+            // Use the base64 logo uploaded in Settings
+            brandLogoImg.src = settings.storeLogo; 
+        } else {
+            // Fallback if no logo is uploaded
+            brandLogoImg.src = 'favicon.png'; 
+        }
+    }
 }
 
 function injectSettingsStyles() {
@@ -2420,6 +2433,8 @@ async function saveOrder(openInNewTab = false) {
         const itemQty = parseFloat(row.querySelector('.qty').value) || 0;
         const price = parseFloat(row.querySelector('.price').value) || 0;
         const total = parseFloat(row.querySelector('.row-total').value) || 0;
+        const isLensItem = type === 'Lens' || type === 'Contact Lens';
+        const lensDetails = isLensItem ? readLensDetailsFromRow(row) : null;
 
         // SKIP EMPTY ROWS
         if(!desc || total === 0) return;
@@ -2452,6 +2467,11 @@ async function saveOrder(openInNewTab = false) {
             disc: parseFloat(row.querySelector('.row-disc').value) || 0, // SAVE DISCOUNT
             discAmt: parseFloat(row.querySelector('.row-disc-amt')?.value) || 0,
             total: total,
+            lensBrand: lensDetails ? lensDetails.brand : "",
+            lensType: lensDetails ? lensDetails.type : "",
+            lensDesign: lensDetails ? lensDetails.design : "",
+            lensCoating: lensDetails ? lensDetails.coating : "",
+            lensIndex: lensDetails ? lensDetails.index : "",
             rx: row.querySelector('.row-rx-data').value
                 ? JSON.parse(row.querySelector('.row-rx-data').value)
                 : null
@@ -3703,6 +3723,9 @@ async function loadOrderForEdit(id) {
             row.querySelector('.row-disc').value = disc;
             row.querySelector('.row-disc-amt').value = discAmt.toFixed(2);
             row.dataset.discountMode = discAmt > 0 ? 'amount' : 'percent';
+            if (item.type === 'Lens' || item.type === 'Contact Lens' || /^LENS\b/i.test(desc)) {
+                applyLensDetailsToRow(row, extractLensDetails(item));
+            }
 
             const rxData = item.rx ? (typeof item.rx === "string" ? item.rx : JSON.stringify(item.rx)) : "";
             row.querySelector('.row-rx-data').value = rxData;
@@ -3874,12 +3897,71 @@ function parseLensDesc(desc) {
     if (!desc) return {};
     const clean = desc.replace(/^LENS\s*-\s*/i, "");
     const parts = clean.split(" - ").map(p => p.trim()).filter(Boolean);
+    if (parts.length >= 5) {
+        return {
+            brand: parts[0] || "",
+            type: parts[1] || "",
+            design: parts[2] || "",
+            coating: parts[3] || "",
+            index: parts[4] || ""
+        };
+    }
     return {
         brand: parts[0] || "",
         type: parts[1] || "",
+        design: "",
         coating: parts[2] || "",
         index: parts[3] || ""
     };
+}
+
+function buildLensDescription(details = {}) {
+    const brand = String(details.brand || "").trim();
+    const type = String(details.type || "").trim();
+    const design = String(details.design || "").trim();
+    const coating = String(details.coating || "").trim();
+    const index = String(details.index || "").trim();
+    const parts = [brand, type];
+    if (design) parts.push(design);
+    if (coating) parts.push(coating);
+    if (index) parts.push(index);
+    return parts.length ? `LENS - ${parts.join(" - ")}` : "LENS";
+}
+
+function extractLensDetails(item = {}) {
+    const parsed = parseLensDesc(item.desc || item.description || "");
+    return {
+        brand: String(item.lensBrand || parsed.brand || "").trim(),
+        type: String(item.lensType || parsed.type || "").trim(),
+        design: String(item.lensDesign || parsed.design || "").trim(),
+        coating: String(item.lensCoating || parsed.coating || "").trim(),
+        index: String(item.lensIndex || parsed.index || "").trim()
+    };
+}
+
+function applyLensDetailsToRow(row, details = {}) {
+    if (!row) return;
+    row.dataset.lensBrand = String(details.brand || "").trim();
+    row.dataset.lensType = String(details.type || "").trim();
+    row.dataset.lensDesign = String(details.design || "").trim();
+    row.dataset.lensCoating = String(details.coating || "").trim();
+    row.dataset.lensIndex = String(details.index || "").trim();
+}
+
+function readLensDetailsFromRow(row) {
+    if (!row) return extractLensDetails();
+    const parsed = parseLensDesc(row.querySelector('.desc')?.value || "");
+    return {
+        brand: String(row.dataset.lensBrand || parsed.brand || "").trim(),
+        type: String(row.dataset.lensType || parsed.type || "").trim(),
+        design: String(row.dataset.lensDesign || parsed.design || "").trim(),
+        coating: String(row.dataset.lensCoating || parsed.coating || "").trim(),
+        index: String(row.dataset.lensIndex || parsed.index || "").trim()
+    };
+}
+
+function looksLikeLensIndex(value) {
+    return /^1\.\d{2,3}$/.test(String(value || "").trim());
 }
 
 function isEyewearPrescription(rx) {
@@ -4046,7 +4128,7 @@ function fillLensModalFromRow(row) {
     const disc = row.querySelector('.row-disc')?.value || "";
     const rxRaw = row.querySelector('.row-rx-data')?.value || "";
 
-    const info = parseLensDesc(desc);
+    const info = readLensDetailsFromRow(row);
     const rx = parseRxValue(rxRaw) || {};
 
     const setVal = (id, val) => {
@@ -4056,6 +4138,7 @@ function fillLensModalFromRow(row) {
 
     setVal('lnBrand', info.brand);
     setVal('lnType', info.type);
+    setVal('lnDesign', info.design);
     setVal('lnCoating', info.coating);
     setVal('lnIndex', info.index);
     setVal('lnPrice', price);
@@ -4224,11 +4307,12 @@ function fillLensModalFromOrderItem(item) {
         if (el) el.value = val || "";
     };
 
-    const info = parseLensDesc(item.desc || "");
+    const info = extractLensDetails(item);
     const rx = parseRxValue(item.rx) || {};
 
     setVal('lnBrand', info.brand);
     setVal('lnType', info.type);
+    setVal('lnDesign', info.design);
     setVal('lnCoating', info.coating);
     setVal('lnIndex', info.index);
     setVal('lnPrice', item.price);
@@ -4332,14 +4416,20 @@ function saveRxEditFromModal() {
 
     const brand = document.getElementById('lnBrand').value;
     const type = document.getElementById('lnType').value;
+    const design = document.getElementById('lnDesign').value;
     const coating = document.getElementById('lnCoating').value;
     const indexVal = document.getElementById('lnIndex').value;
     const price = parseFloat(document.getElementById('lnPrice').value) || 0;
     const disc = parseFloat(document.getElementById('lnDisc').value) || 0;
 
-    let desc = `LENS - ${brand} - ${type}`;
-    if (coating) desc += ` - ${coating}`;
-    if (indexVal) desc += ` - ${indexVal}`;
+    const lensDetails = {
+        brand,
+        type,
+        design,
+        coating,
+        index: indexVal
+    };
+    const desc = buildLensDescription(lensDetails);
 
     const cleanedRx = buildRxDataFromModal();
     const qty = parseFloat(item.qty) || 1;
@@ -4348,6 +4438,11 @@ function saveRxEditFromModal() {
     const total = subtotal - discAmt;
 
     item.desc = desc;
+    item.lensBrand = lensDetails.brand;
+    item.lensType = lensDetails.type;
+    item.lensDesign = lensDetails.design;
+    item.lensCoating = lensDetails.coating;
+    item.lensIndex = lensDetails.index;
     item.price = price;
     item.disc = disc;
     item.total = total;
@@ -4459,6 +4554,7 @@ function saveLensData() {
     const code = getVal('lnCode');
     const brand = getVal('lnBrand');
     const type = getVal('lnType');
+    const design = getVal('lnDesign');
     const coating = getVal('lnCoating');
     const indexVal = getVal('lnIndex');
     
@@ -4502,10 +4598,14 @@ function saveLensData() {
     if (isChecked('use_computer')) rxData.usage.push("Computer/Office");
 
     // 4. Create Description String (aligned with invoice output)
-    // Format: LENS - [Brand] - [Type] - [Coating] - [Index]
-    let desc = `LENS - ${brand} - ${type}`;
-    if (coating) desc += ` - ${coating}`;
-    if (indexVal) desc += ` - ${indexVal}`;
+    const lensDetails = {
+        brand,
+        type,
+        design,
+        coating,
+        index: indexVal
+    };
+    const desc = buildLensDescription(lensDetails);
 
     // Remove empty Rx fields so invoice stays clean
     const cleanedRx = pruneRxData(rxData);
@@ -4514,6 +4614,7 @@ function saveLensData() {
     activeRow.querySelector('.row-rx-data').value = cleanedRx ? JSON.stringify(cleanedRx) : "";
     activeRow.querySelector('.p-code').value = code;
     activeRow.querySelector('.desc').value = desc;
+    applyLensDetailsToRow(activeRow, lensDetails);
     activeRow.querySelector('.price').value = price;
     activeRow.querySelector('.row-disc').value = disc;
     activeRow.querySelector('.row-disc-amt').value = "0.00";
@@ -5642,16 +5743,31 @@ function fillFrameModal(p) {
 
 // --- FILL LENS MODAL ---
 function fillLensModal(p) {
-    document.getElementById('lnCode').value = p.code;
-    document.getElementById('lnBrand').value = p.brand;
-    document.getElementById('lnIndex').value = p.name; // Assuming Index is stored in Name for Lens often
-    // Or you can map p.material to Index if that's how you save it
+    document.getElementById('lnCode').value = p.code || '';
+    document.getElementById('lnBrand').value = p.brand || '';
+    const rawName = String(p.name || '').trim();
+    const rawMaterial = String(p.material || '').trim();
+    const explicitDesign = String(p.design || '').trim();
+    const explicitIndex = String(p.index || '').trim();
+    let design = explicitDesign;
+    let index = explicitIndex;
+
+    if (!design && rawName && !looksLikeLensIndex(rawName)) {
+        design = rawName;
+    }
+    if (!index) {
+        if (looksLikeLensIndex(rawMaterial)) index = rawMaterial;
+        else if (looksLikeLensIndex(rawName)) index = rawName;
+    }
+    if (!design && rawMaterial && !looksLikeLensIndex(rawMaterial)) {
+        design = rawMaterial;
+    }
+
+    document.getElementById('lnDesign').value = design;
+    document.getElementById('lnIndex').value = index;
+    document.getElementById('lnCoating').value = p.coating || '';
     
-    // Attempt to map extra fields if they exist in your product object
-    if(p.design) document.getElementById('lnDesign').value = p.design;
-    if(p.coating) document.getElementById('lnCoating').value = p.coating;
-    
-    document.getElementById('lnPrice').value = p.sellPrice;
+    document.getElementById('lnPrice').value = p.sellPrice || '';
 
     // Close all suggestions
     hideAllSuggestions();

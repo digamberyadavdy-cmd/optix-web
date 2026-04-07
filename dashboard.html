@@ -8,6 +8,7 @@
     <link rel="shortcut icon" href="favicon.ico?v=2">
     <link rel="icon" type="image/png" sizes="64x64" href="favicon.png?v=2">
     <link rel="icon" type="image/svg+xml" href="favicon.svg?v=2">
+    <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         /* --- CORE STYLES --- */
@@ -20,69 +21,7 @@
         body { margin: 0; font-family: 'Segoe UI', Tahoma, sans-serif; background: var(--bg-body); font-size: 13px; }
         a { text-decoration: none; color: inherit; }
 
-        /* --- 1. TOP HEADER --- */
-        .top-bar {
-            background: #222;
-            height: 45px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            color: white;
-            padding: 0;
-        }
-        .nav-icons { display: flex; height: 100%; }
-        
-        .nav-icon {
-            width: 50px;
-            height: 100%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 24px;
-            cursor: pointer;
-            transition: opacity 0.2s;
-            color: white;
-        }
-        .nav-icon:hover { opacity: 0.8; }
-        
-        /* Colors */
-        .bg-black { background: #000; }
-        .bg-green { background: #8bc34a; }
-        .bg-blue { background: #03a9f4; }
-        .bg-orange { background: #ff9800; }
-        .bg-purple { background: #9c27b0; }
-        .bg-red { background: #f44336; }
-        .bg-yellow { background: #ffeb3b; color: black; }
-
-        .user-info { padding-right: 20px; text-align: right; font-size: 11px; }
-
-        /* --- 2. MAIN MENU (UPDATED FOR DROPDOWN) --- */
-        .main-menu {
-            background: white;
-            border-bottom: 1px solid #ccc;
-            padding: 0 15px; 
-            display: flex;
-            gap: 25px;
-            font-weight: 600;
-            color: #444;
-            font-size: 12px;
-            height: 40px; 
-            align-items: center;
-            overflow: visible; 
-            position: relative;
-            z-index: 100;
-            justify-content: space-between;
-        }
-        
-        .menu-item { 
-            display: flex; 
-            align-items: center; 
-            gap: 6px; 
-            cursor: pointer; 
-            height: 100%; 
-            position: relative;
-            padding: 0 5px;
-        }
+        /* Shared header and navigation styles come from style.css */
         .cloud-sync-pill {
             padding: 0 12px;
             border-radius: 999px;
@@ -91,44 +30,13 @@
             display: inline-flex;
             align-items: center;
             height: 26px;
+            margin: 12px 15px 0;
+            width: fit-content;
         }
         .cloud-sync-pill[data-state='online'] { background: #16a34a; color: white; }
         .cloud-sync-pill[data-state='syncing'] { background: #facc15; color: #111; }
         .cloud-sync-pill[data-state='offline'] { background: #dc2626; color: white; }
         .cloud-sync-pill[data-state='disabled'] { background: #64748b; color: white; }
-        .menu-item:hover { color: #0288d1; }
-
-        /* --- DROPDOWN CSS --- */
-        .dropdown-content {
-            display: none;
-            position: absolute;
-            background-color: #444; /* Darker background for visibility */
-            min-width: 210px;
-            box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
-            z-index: 999;
-            top: 40px;
-            left: 0;
-            text-align: left;
-        }
-
-        .dropdown-content a {
-            color: white;
-            padding: 10px 15px;
-            text-decoration: none;
-            display: block;
-            font-size: 12px;
-            border-bottom: 1px solid #555;
-            font-weight: normal;
-        }
-
-        .dropdown-content a:hover {
-            background-color: #03a9f4;
-        }
-
-        /* Show Dropdown on Hover */
-        .menu-item:hover .dropdown-content {
-            display: block;
-        }
 
         /* --- 3. DASHBOARD CONTENT --- */
         .container { padding: 15px; max-width: 1400px; margin: 0 auto; }
@@ -231,21 +139,24 @@
 
     <div class="top-bar">
         <div class="nav-icons">
-            <div class="nav-icon bg-black"><i class="fas fa-glasses"></i></div>
-            
-            <a href="home.html" style="height:100%">
-                <div class="nav-icon bg-green"><i class="fas fa-home"></i></div>
-            </a>
-            
-            <a href="dashboard.html" style="height:100%">
-                <div class="nav-icon bg-orange"><i class="fas fa-tachometer-alt"></i></div>
-            </a>
-            
-            <div class="nav-icon bg-blue" onclick="openSearchModal()"><i class="fas fa-search"></i></div>
-            <div class="nav-icon bg-yellow"><i class="fas fa-th"></i></div>
-            <div class="nav-icon bg-purple"><i class="fas fa-cog"></i></div>
-            <div class="nav-icon bg-red"><i class="fas fa-user"></i></div>
-        </div>
+    <a href="home.html" class="brand-logo-container">
+        <img src="favicon.png" alt="Company Logo" class="brand-logo-img">
+        <span class="brand-name">OptixCrafter</span>
+    </a>
+    
+    <a href="home.html">
+        <div class="nav-icon bg-green"><i class="fas fa-home"></i></div>
+    </a>
+    
+    <a href="dashboard.html">
+        <div class="nav-icon bg-orange"><i class="fas fa-tachometer-alt"></i></div>
+    </a>
+    
+    <div class="nav-icon bg-blue" onclick="openSearchModal()"><i class="fas fa-search"></i></div>
+    <div class="nav-icon bg-yellow"><i class="fas fa-th"></i></div>
+    <div class="nav-icon bg-purple"><i class="fas fa-cog"></i></div>
+    <div class="nav-icon bg-red"><i class="fas fa-user"></i></div>
+</div>
         <div class="user-info">
     <strong>Welcome, Admin</strong><br>
     <span id="liveClock">Online</span>
@@ -283,6 +194,20 @@
                 <a href="audit.html" style="color:rgb(243, 243, 237); font-weight:bold;">Inventory Audit</a> 
                 <a href="inventory.html">Stock Movement</a>
                 <a href="barcode.html">Track Barcode</a>
+            </div>
+        </div>
+
+        <div class="menu-item">
+            <i class="fas fa-tag"></i> PURCHASE <i class="fas fa-caret-down" style="font-size:10px; margin-left:3px;"></i>
+            <div class="dropdown-content">
+                <a href="purchase.html">Add Purchase</a>
+                <a href="purchase.html">Purchase History</a>
+                <a href="purchase.html">Edit Purchase</a>
+                <a href="purchase.html">Purchase Return</a>
+                <a href="purchase.html">Pending Challans</a>
+                <a href="purchase.html">Pending Purchases</a>
+                <a href="barcode.html">Generate Barcode</a>
+                <a href="barcode.html">Confirm Barcode</a>
             </div>
         </div>
         

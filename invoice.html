@@ -385,6 +385,31 @@
             return null;
         }
 
+        function buildLensDescription(details = {}) {
+            const parts = [
+                details.brand,
+                details.type,
+                details.design,
+                details.coating,
+                details.index
+            ].map((part) => String(part || '').trim()).filter(Boolean);
+            return parts.length ? `LENS - ${parts.join(' - ')}` : '';
+        }
+
+        function resolveItemDescription(item) {
+            const rawDesc = item.desc || item.description || item.name || '';
+            const hasLensDetails = ['lensBrand', 'lensType', 'lensDesign', 'lensCoating', 'lensIndex']
+                .some((key) => String(item[key] || '').trim());
+            if (!hasLensDetails) return rawDesc || '-';
+            return buildLensDescription({
+                brand: item.lensBrand,
+                type: item.lensType,
+                design: item.lensDesign,
+                coating: item.lensCoating,
+                index: item.lensIndex
+            }) || rawDesc || '-';
+        }
+
         // Try to normalize items from various possible keys/shapes
         function normalizeItems(order) {
             if (!order) return [];
@@ -405,7 +430,7 @@
             }
             return items.map((it) => ({
                 ...it,
-                desc: it.desc || it.description || it.name || '-',
+                desc: resolveItemDescription(it),
                 qty: it.qty || it.quantity || 0,
                 price: it.price || it.rate || 0,
                 disc: it.disc || it.discountPercent || 0,

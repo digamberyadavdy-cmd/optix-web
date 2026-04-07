@@ -8,6 +8,7 @@
     <link rel="shortcut icon" href="favicon.ico?v=2">
     <link rel="icon" type="image/png" sizes="64x64" href="favicon.png?v=2">
     <link rel="icon" type="image/svg+xml" href="favicon.svg?v=2">
+    <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         /* --- CORE STYLES --- */
@@ -15,34 +16,7 @@
         body { margin: 0; font-family: 'Segoe UI', Tahoma, sans-serif; background: var(--bg-body); font-size: 13px; }
         a { text-decoration: none; color: inherit; }
 
-        /* HEADER STYLES */
-        .top-bar { background: #222; height: 45px; display: flex; align-items: center; justify-content: space-between; color: white; padding-right: 15px; }
-        .nav-icons { display: flex; height: 100%; }
-        
-        /* UPDATED: Bigger Icons (24px) */
-        .nav-icon { 
-            width: 50px; 
-            display: flex; 
-            align-items: center; 
-            justify-content: center; 
-            font-size: 24px; /* BIGGER SIZE */
-            cursor: pointer; 
-            transition: opacity 0.2s; 
-            color: white;
-            height: 100%;
-        }
-        .nav-icon:hover { opacity: 0.8; }
-        
-        .bg-black { background: #000; } .bg-green { background: #8bc34a; }
-        .bg-blue { background: #03a9f4; } .bg-orange { background: #ff9800; }
-        .bg-purple { background: #9c27b0; } .bg-red { background: #f44336; }
-        .bg-yellow { background: #ffeb3b; color: black; }
-
-        .user-info { text-align: right; font-size: 11px; color: white; }
-
-        /* MENU STYLES */
-        .main-menu { background: white; border-bottom: 1px solid #ccc; padding: 8px 15px; display: flex; gap: 25px; font-weight: 600; color: #444; font-size: 12px; }
-        .menu-item { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+        /* Shared header and navigation styles come from style.css */
 
         /* --- HOME PAGE LAYOUT --- */
         .home-container {
@@ -110,21 +84,24 @@
 
     <div class="top-bar">
         <div class="nav-icons">
-            <div class="nav-icon bg-black"><i class="fas fa-glasses"></i></div>
-            
-            <a href="home.html" style="height: 100%;">
-                <div class="nav-icon bg-green"><i class="fas fa-home"></i></div>
-            </a>
-            
-            <a href="dashboard.html" style="height: 100%;">
-                <div class="nav-icon bg-orange"><i class="fas fa-tachometer-alt"></i></div>
-            </a>
-            
-            <div class="nav-icon bg-blue"><i class="fas fa-search"></i></div>
-            <div class="nav-icon bg-yellow"><i class="fas fa-th"></i></div>
-            <div class="nav-icon bg-purple"><i class="fas fa-cog"></i></div>
-            <div class="nav-icon bg-red"><i class="fas fa-user"></i></div>
-        </div>
+    <a href="home.html" class="brand-logo-container">
+        <img src="favicon.png" alt="Company Logo" class="brand-logo-img">
+        <span class="brand-name">OptixCrafter</span>
+    </a>
+    
+    <a href="home.html">
+        <div class="nav-icon bg-green"><i class="fas fa-home"></i></div>
+    </a>
+    
+    <a href="dashboard.html">
+        <div class="nav-icon bg-orange"><i class="fas fa-tachometer-alt"></i></div>
+    </a>
+    
+    <div class="nav-icon bg-blue"><i class="fas fa-search"></i></div>
+    <div class="nav-icon bg-yellow"><i class="fas fa-th"></i></div>
+    <div class="nav-icon bg-purple"><i class="fas fa-cog"></i></div>
+    <div class="nav-icon bg-red"><i class="fas fa-user"></i></div>
+</div>
 
         <div class="user-info">
     <strong>Welcome, Admin</strong><br>

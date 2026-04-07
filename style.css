@@ -5,6 +5,8 @@
     --primary: #2563eb;
     --border: #bfdbfe;
     --input-border: #ced4da;
+    --top-bar-height: 54px;
+    --menu-height: 48px;
 }
 
 body {
@@ -153,26 +155,107 @@ tr:nth-child(even) { background-color: #f9fafb; }
 /* 1. Top Bar & Colorful Icons */
 .top-bar {
     background: #222;
-    height: 45px;
+    height: var(--top-bar-height);
+    min-height: var(--top-bar-height);
     display: flex;
-    align-items: center;
+    align-items: stretch;
     justify-content: space-between;
     color: white;
     padding: 0;
+    box-sizing: border-box;
 }
-.nav-icons { display: flex; height: 100%; }
+
+.nav-icons { 
+    display: flex; 
+    align-items: stretch;
+    height: 100%;
+    min-width: 0;
+}
+
+/* FIX: Forces link wrappers to fill the height properly so boxes align perfectly */
+.nav-icons a { 
+    display: flex; 
+    align-items: stretch;
+    height: 100%;
+    flex: 0 0 auto;
+    text-decoration: none; 
+}
+
 .nav-icon {
-    width: 50px;
+    width: 52px;
+    min-width: 52px;
     height: 100%;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 24px;
     cursor: pointer;
     transition: opacity 0.2s;
     color: white;
+    box-sizing: border-box;
 }
+
+/* FIX: Forces all FontAwesome icons to be the exact same size and centered */
+.nav-icon i {
+    font-size: 19px !important; 
+    line-height: 1;
+}
+
 .nav-icon:hover { opacity: 0.8; }
+
+/* Brand logo container layout */
+.brand-logo-container {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 10px;
+    background-color: #000;
+    height: 100%;
+    min-width: 220px;
+    padding: 0 18px;
+    text-decoration: none;
+    color: #ffffff;
+    box-sizing: border-box;
+    flex: 0 0 auto;
+    overflow: hidden;
+}
+
+.brand-logo-container:hover { color: #e0e0e0; }
+
+.brand-logo-img {
+    display: block;
+    max-width: 44px;
+    max-height: 28px;
+    width: auto;
+    height: auto;
+    object-fit: contain;
+    flex: 0 0 auto;
+}
+
+.brand-name {
+    font-size: 17px;
+    font-weight: 700;
+    white-space: nowrap;
+    letter-spacing: 0.35px;
+    line-height: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+@media (max-width: 1024px) {
+    .brand-logo-container {
+        min-width: 180px;
+        padding: 0 14px;
+    }
+}
+
+@media (max-width: 768px) {
+    .brand-logo-container {
+        min-width: 78px;
+        justify-content: center;
+        padding: 0 10px;
+    }
+    .brand-name { display: none; }
+}
 
 /* Icon Background Colors */
 .bg-black { background: #000; }
@@ -183,35 +266,61 @@ tr:nth-child(even) { background-color: #f9fafb; }
 .bg-red { background: #f44336; }
 .bg-yellow { background: #ffeb3b; color: black; }
 
-.user-info { padding-right: 20px; text-align: right; font-size: 11px; color: white; }
+.user-info {
+    min-width: 176px;
+    padding: 0 18px 0 12px;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    justify-content: center;
+    text-align: right;
+    font-size: 11px;
+    color: white;
+    line-height: 1.2;
+    box-sizing: border-box;
+    flex: 0 0 auto;
+}
+
+.user-info strong {
+    font-size: 12px;
+}
 
 /* 2. Main Dropdown Menu */
 .main-menu {
     background: white;
     border-bottom: 1px solid #ccc;
-    padding: 0 15px; 
+    padding: 0 16px;
     display: flex;
-    gap: 25px;
+    gap: clamp(14px, 1.8vw, 24px);
     font-weight: 600;
     color: #444;
     font-size: 12px;
-    height: 40px; 
+    min-height: var(--menu-height);
+    height: var(--menu-height);
     align-items: center;
-    overflow: visible; 
+    overflow: visible;
+    white-space: nowrap;
     position: relative;
     z-index: 1000; /* High z-index to sit on top of other elements */
+    box-sizing: border-box;
 }
 
 .menu-item { 
-    display: flex; 
+    display: inline-flex; 
     align-items: center; 
     gap: 6px; 
     cursor: pointer; 
     height: 100%; 
     position: relative;
-    padding: 0 5px;
+    padding: 0 4px;
+    flex: 0 0 auto;
+    white-space: nowrap;
 }
 .menu-item:hover { color: #0288d1; }
+
+.menu-item > i:first-child {
+    font-size: 13px;
+}
 
 /* Dropdown Content */
 .dropdown-content {
